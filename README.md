@@ -6,8 +6,9 @@ A multi-platform voice-to-text app with intelligent model routing, allowing you 
 
 - 🎙️ **System-wide voice recording** (Desktop) / **One-tap recording** (Mobile)
 - 🤖 **Multiple SOTA STT models** with automatic selection:
-  - **Moonshine** (5-15x faster, optimized for edge devices)
-  - **Distil-Whisper** (6x faster, excellent accuracy)
+  - **Parakeet TDT v3** (20-110x real-time on consumer HW, 6.32% WER)
+  - **Moonshine v2** (5-44x faster than equivalent Whisper models, streaming support)
+  - **Distil-Whisper** (6x faster than Whisper Large v3, excellent accuracy)
   - Faster-Whisper, Whisper.cpp, Python Whisper
 - 🧠 **Intelligent model routing** - Auto-selects best model for your needs
 - 📋 Automatic clipboard copy
@@ -25,46 +26,17 @@ npm install
 
 2. Install an STT model (choose one or more):
 
-   ### 🔥 **UNDER 1B Parameters** (Recommended - Edge-optimized)
+   | Model | Install | Best for |
+   |-------|---------|----------|
+   | **Parakeet TDT v3** | `./install-parakeet.sh` | Fastest, 25 languages |
+   | **Moonshine v2** | `./install-moonshine.sh` | Mobile/edge, streaming |
+   | **Distil-Whisper** | `./install-distil-whisper.sh` | English accuracy |
+   | **Faster-Whisper** | `pip install faster-whisper` | Good all-rounder |
+   | **whisper.cpp** | `./setup-whisper.sh` | Low-level C++ |
+   | **Python Whisper** | `./install-python-whisper.sh` | Fallback |
+   | **Canary Qwen 2.5B** | `./install-canary.sh` | Max accuracy |
 
-   **Option A: Parakeet TDT v3 (FASTEST)**
-   ```bash
-   ./install-parakeet.sh  # 600M params, 6.32% WER, 25 languages, ultra-fast inference
-   ```
-
-   **Option B: Moonshine (Mobile-optimized)**
-   ```bash
-   ./install-moonshine.sh  # 40-200M params, 5-15x real-time
-   ```
-
-   **Option C: Distil-Whisper (Best for English)**
-   ```bash
-   ./install-distil-whisper.sh  # 244M params, 6x real-time
-   ```
-
-   **Option D: Faster-Whisper (Good balance)**
-   ```bash
-   pip install faster-whisper  # 74M params, 4x real-time
-   ```
-
-   **Option E: whisper.cpp (C++ implementation)**
-   ```bash
-   ./setup-whisper.sh  # 74M params, 2x real-time
-   ```
-
-   **Option F: Python Whisper (Fallback)**
-   ```bash
-   ./install-python-whisper.sh  # 74M params, baseline
-   ```
-
-   ### 🎯 **OVER 1B Parameters** (Optional - Maximum accuracy)
-
-   **Option G: Canary Qwen 2.5B (#1 Accuracy)**
-   ```bash
-   ./install-canary.sh  # 2.5B params, 5.63% WER, 
-   ```
-
-   > **Note:** The app will automatically use the fastest available model. Install multiple models for automatic fallback. **Only models you install will be used.**
+   > The app auto-selects the fastest available model. Install multiple for automatic fallback. See [MODEL_COMPARISON.md](./MODEL_COMPARISON.md) for benchmarks.
 
 3. Build and run:
 ```bash
@@ -95,19 +67,20 @@ npm run dev
 Listen uses an **intelligent routing system** that automatically selects the best available model based on your requirements.
 
 **Recommended Models:**
-- **Desktop (English)**: Distil-Whisper Small (6x faster, excellent accuracy)
-- **Desktop (Multilingual)**: Moonshine Base (5-15x faster, good accuracy)
-- **Mobile (iOS/Android)**: Moonshine Tiny (ultra-fast, only 40MB)
+- **Desktop (Speed)**: Parakeet TDT v3 (fastest, 25 languages)
+- **Desktop (English accuracy)**: Distil-Whisper (6x faster than Whisper Large v3)
+- **Desktop (Multilingual)**: Moonshine v2 Base (streaming, good accuracy)
+- **Mobile (iOS/Android)**: Moonshine v2 Tiny (ultra-fast, ~34MB)
 
 See [MODEL_COMPARISON.md](./MODEL_COMPARISON.md) for detailed benchmarks and comparisons.
 
 ## Platform Support
 
+- ✅ **macOS** (Desktop - Electron, requires `brew install sox`)
 - ✅ **Linux** (Desktop - Electron)
+- ✅ **Windows** (Desktop - Initial support)
 - ✅ **iOS 16+** (Native Swift app) - See [mobile/ios/README.md](./mobile/ios/README.md)
 - ✅ **Android 7+** (Native Kotlin app) - See [mobile/android/README.md](./mobile/android/README.md)
-- 🔜 macOS (Desktop - Coming soon)
-- ✅ Windows (Desktop - Initial support)
 
 ## Project Structure
 
@@ -136,8 +109,11 @@ See [ARCHITECTURE.md](./docs/ARCHITECTURE.md#file-structure) for complete struct
 ## Requirements
 
 - Node.js 18+
-- One of: whisper.cpp, Python whisper, or faster-whisper (local models, no API needed)
-- Audio recording: `arecord` (ALSA) or `sox` on Linux
+- At least one STT model installed (see setup above)
+- Audio recording:
+  - **macOS**: `sox` (`brew install sox`)
+  - **Linux**: `arecord` (ALSA) or `sox`
+  - **Windows**: PyAudioWPatch (installed automatically)
 
 ## License
 

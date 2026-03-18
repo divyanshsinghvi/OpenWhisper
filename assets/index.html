@@ -352,6 +352,31 @@
       updateUI(data.state, data);
     });
 
+    // Listen for streaming transcription updates
+    ipcRenderer.on('streaming-text', (event, data) => {
+      let streamingBox = document.getElementById('streaming-text');
+      if (!streamingBox) {
+        // Create streaming text box if it doesn't exist yet
+        const listeningText = document.querySelector('.listening-text');
+        if (listeningText) {
+          listeningText.innerHTML = '<div class="speech-detected">✓ Speech Detected</div>';
+        }
+        const container = document.querySelector('.container');
+        if (container) {
+          const box = document.createElement('div');
+          box.id = 'streaming-text';
+          box.className = 'transcription-box';
+          box.style.textAlign = 'left';
+          container.appendChild(box);
+        }
+        streamingBox = document.getElementById('streaming-text');
+      }
+      if (streamingBox) {
+        streamingBox.textContent = data.text;
+        streamingBox.scrollTop = streamingBox.scrollHeight;
+      }
+    });
+
     // Listen for speech detection events
     ipcRenderer.on('speech-detected', () => {
       const listeningText = document.querySelector('.listening-text');

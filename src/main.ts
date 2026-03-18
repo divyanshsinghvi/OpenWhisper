@@ -5,6 +5,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { RecordingManager } from './recording';
 import { ModularTranscriptionService } from './transcription-router';
+import { MoonshineStreamingModel, StreamingEvent } from './models/MoonshineStreamingModel';
 import { DatasetManager } from './dataset';
 
 const execAsync = promisify(exec);
@@ -13,6 +14,8 @@ let mainWindow: BrowserWindow | null = null;
 let floatingButtonWindow: BrowserWindow | null = null;
 let recordingManager: RecordingManager | null = null;
 let transcriptionService: ModularTranscriptionService | null = null;
+let streamingModel: MoonshineStreamingModel | null = null;
+let useStreaming = false;
 let isRecording = false;
 let previousWindowFocus: any = null;
 
@@ -166,7 +169,6 @@ async function toggleRecording() {
     previousWindowFocus = await captureWindowFocus();
 
     isRecording = true;
-    const recordingStartTime = Date.now();
     console.log('\n' + '='.repeat(60));
     console.log('[MIC] RECORDING STARTED');
     console.log(`[TIME] [${new Date().toLocaleTimeString()}]`);
@@ -178,16 +180,27 @@ async function toggleRecording() {
     mainWindow.webContents.send('recording-state', { state: 'recording' });
     updateFloatingButtonState('recording');
 
-    if (!recordingManager) {
-      recordingManager = new RecordingManager();
-    }
-
-    try {
-      await recordingManager.startRecording();
-      console.log('[OK] Audio stream initialized');
-    } catch (error) {
-      console.error('[ERROR] Recording start error:', error);
-      isRecording = false;
+    if (useStreaming && streamingModel) {
+      // Streaming mode: Moonshine v2 handles mic directly
+      try {
+        await streamingModel.startStreaming();
+        console.log('[OK] Streaming transcription started');
+      } catch (error) {
+        console.error('[ERROR] Streaming start error:', error);
+        isRecording = false;
+      }
+    } else {
+      // Batch mode: record with sox, then transcribe
+      if (!recordingManager) {
+        recordingManager = new RecordingManager();
+      }
+      try {
+        await recordingManager.startRecording();
+        console.log('[OK] Audio stream initialized');
+      } catch (error) {
+        console.error('[ERROR] Recording start error:', error);
+        isRecording = false;
+      }
     }
   } else {
     // Stop recording
@@ -200,150 +213,101 @@ async function toggleRecording() {
     mainWindow.webContents.send('recording-state', { state: 'processing' });
     updateFloatingButtonState('processing');
 
-    if (recordingManager) {
+    if (useStreaming && streamingModel) {
+      // Streaming mode: stop and get final text
       try {
-        const recordStop = Date.now();
+        const finalText = await streamingModel.stopStreaming();
+        console.log(`[RESULTS] STREAMING TRANSCRIPTION RESULTS:`);
+        console.log(`  [OK] Text: "${finalText}"`);
+        console.log(`  [OK] Model: Moonshine v2 (streaming)`);
+
+        // Copy to clipboard
+        clipboard.writeText(finalText);
+        console.log(`  [OK] Text copied to clipboard`);
+
+        updateFloatingButtonState('idle');
+        mainWindow?.hide();
+
+        // Restore focus and paste
+        setTimeout(async () => {
+          try {
+            await restoreWindowFocus(previousWindowFocus);
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const pasteKey = process.platform === 'darwin' ? 'command' : 'ctrl';
+            await execAsync(`python3 -c "import pyautogui; pyautogui.hotkey('${pasteKey}', 'v')"`);
+            console.log(`[DONE] PIPELINE COMPLETE - Total time: ${Date.now() - pipelineStart}ms`);
+          } catch (error) {
+            console.log(`  [INFO] Text is in clipboard - paste manually with ${process.platform === 'darwin' ? 'Cmd' : 'Ctrl'}+V`);
+          }
+        }, 100);
+      } catch (error) {
+        console.error('[ERROR] Streaming stop error:', error);
+        mainWindow.webContents.send('recording-state', {
+          state: 'error',
+          error: error instanceof Error ? error.message : 'Streaming failed'
+        });
+        updateFloatingButtonState('idle');
+        setTimeout(() => { mainWindow?.hide(); }, 2000);
+      }
+    } else if (recordingManager) {
+      // Batch mode: existing flow
+      try {
         const audioFilePath = await recordingManager.stopRecording();
-        const recordTime = Date.now() - recordStop;
-        console.log(`[OK] Recording finalized (${recordTime}ms)`);
+        console.log(`[OK] Recording finalized`);
 
-        // Check if file exists and has size
-        const fs = require('fs');
-        if (fs.existsSync(audioFilePath)) {
-          const size = fs.statSync(audioFilePath).size;
-          console.log(`📁 Audio file: ${audioFilePath}`);
-          console.log(`   Size: ${(size / 1024).toFixed(2)} KB`);
-          console.log(`   Duration: ${(size / 32000).toFixed(1)}s (approx)`);
-        } else {
-          throw new Error(`Audio file not found: ${audioFilePath}`);
-        }
-
-        console.log(`\n[TIME] [Stage: File Ready] +${Date.now() - pipelineStart}ms`);
-
-        // Transcription service already initialized on app startup
         if (!transcriptionService) {
-          console.error('[ERROR] Transcription service not available');
           throw new Error('Transcription service failed to initialize');
         }
 
+        const transcribeStart = Date.now();
+        const result = await transcriptionService.transcribe(audioFilePath, {
+          routingPreferences: { priority: 'balance', platform: 'desktop', language: 'en' }
+        });
+        const transcribeTime = Date.now() - transcribeStart;
+
+        console.log(`[RESULTS] TRANSCRIPTION RESULTS:`);
+        console.log(`  [OK] Text: "${result.text}"`);
+        console.log(`  [OK] Model: ${result.modelUsed}`);
+        console.log(`  [INFO] Transcription: ${transcribeTime}ms`);
+
+        // Save to dataset
         try {
-          console.log(`\n[TIME] [Stage: Starting Transcription] +${Date.now() - pipelineStart}ms`);
-
-          const transcribeStart = Date.now();
-          // Auto-select best model for desktop
-          const result = await transcriptionService.transcribe(audioFilePath, {
-            routingPreferences: {
-              priority: 'balance',
-              platform: 'desktop',
-              language: 'en'
-            }
+          const datasetManager = new DatasetManager();
+          const fileSize = fs.existsSync(audioFilePath) ? fs.statSync(audioFilePath).size : 0;
+          const recordingDuration = fileSize > 44 ? Math.round(((fileSize - 44) / 32000) * 1000) : 0;
+          await datasetManager.saveEntry(audioFilePath, {
+            transcription: result.text, confidence: result.confidence ?? 0,
+            model: result.modelUsed, language: 'en', duration: recordingDuration, fileSize: fileSize
           });
-
-          const transcribeTime = Date.now() - transcribeStart;
-          console.log(`\n[TIME] [Stage: Transcription Complete] +${Date.now() - pipelineStart}ms (took ${transcribeTime}ms)`);
-
-          console.log(`\n[RESULTS] TRANSCRIPTION RESULTS:`);
-          console.log(`  [OK] Text: "${result.text}"`);
-          console.log(`  [OK] Model: ${result.modelUsed}`);
-          console.log(`  [OK] Confidence: ${result.confidence ? (result.confidence * 100).toFixed(1) : 'N/A'}%`);
-          console.log(`  [INFO] Model inference: ${result.duration}ms`);
-
-          // Save to dataset for training
-          try {
-            const datasetManager = new DatasetManager();
-            const fs = require('fs');
-            const fileSize = fs.existsSync(audioFilePath) ? fs.statSync(audioFilePath).size : 0;
-
-            // Calculate recording duration from file size
-            // WAV format: 16kHz, mono, 16-bit = 32,000 bytes per second
-            // Subtract 44 bytes for WAV header
-            const recordingDuration = fileSize > 44 ? Math.round(((fileSize - 44) / 32000) * 1000) : 0;
-
-            await datasetManager.saveEntry(audioFilePath, {
-              transcription: result.text,
-              confidence: result.confidence ?? 0,
-              model: result.modelUsed,
-              language: 'en',
-              duration: recordingDuration,
-              fileSize: fileSize
-            });
-          } catch (datasetError) {
-            console.error('[WARN] Failed to save dataset entry:', datasetError);
-          }
-
-          // Copy to clipboard
-          const clipboardStart = Date.now();
-          clipboard.writeText(result.text);
-          const clipboardTime = Date.now() - clipboardStart;
-          console.log(`\n[TIME] [Stage: Clipboard] +${Date.now() - pipelineStart}ms (took ${clipboardTime}ms)`);
-          console.log(`  [OK] Text copied to clipboard`);
-
-          updateFloatingButtonState('idle');
-
-          // Hide window immediately
-          mainWindow?.hide();
-
-          // Auto-paste using Ctrl+V
-          console.log(`\n[TIME] [Stage: Auto-Paste] +${Date.now() - pipelineStart}ms`);
-          console.log(`  [NOTE] Text copied to clipboard`);
-          console.log(`  [INFO] Restoring focus to original window...`);
-
-          // Restore focus to original window and paste
-          setTimeout(async () => {
-            const pasteStart = Date.now();
-            try {
-              // Restore focus to the original window
-              const focusRestored = await restoreWindowFocus(previousWindowFocus);
-              if (focusRestored) {
-                console.log(`  [OK] Focus restored`);
-              } else {
-                console.log(`  [WARN] Could not restore focus, attempting paste anyway`);
-              }
-
-              // Small delay to ensure window is ready to receive input
-              await new Promise(resolve => setTimeout(resolve, 100));
-
-              // Use Python to simulate Ctrl+V paste
-              await execAsync('python3 -c "import pyautogui; pyautogui.hotkey(\'ctrl\', \'v\')"');
-              const pasteTime = Date.now() - pasteStart;
-              const totalTime = Date.now() - pipelineStart;
-
-              console.log(`\n  [OK] Text pasted successfully (${pasteTime}ms)`);
-              console.log(`${'='.repeat(60)}`);
-              console.log(`[DONE] PIPELINE COMPLETE - Total time: ${totalTime}ms`);
-              console.log(`   Recording: N/A`);
-              console.log(`   Transcription: ${transcribeTime}ms`);
-              console.log(`   Clipboard: ${clipboardTime}ms`);
-              console.log(`   Paste: ${pasteTime}ms`);
-              console.log(`${'='.repeat(60)}\n`);
-            } catch (error) {
-              console.error(`  [ERROR] Error pasting text:`, error);
-              console.log(`  [INFO] Text is in clipboard - paste manually with Ctrl+V`);
-              console.log(`\n${'='.repeat(60)}`);
-              console.log(`[WARN] PIPELINE COMPLETE (manual paste needed) - Total time: ${Date.now() - pipelineStart}ms`);
-              console.log(`${'='.repeat(60)}\n`);
-            }
-          }, 100);
-        } catch (transcriptionError) {
-          console.error('[ERROR] Transcription error:', transcriptionError);
-          mainWindow.webContents.send('recording-state', {
-            state: 'error',
-            error: transcriptionError instanceof Error ? transcriptionError.message : 'Transcription failed'
-          });
-          setTimeout(() => {
-            mainWindow?.hide();
-          }, 2000);
+        } catch (datasetError) {
+          console.error('[WARN] Failed to save dataset entry:', datasetError);
         }
-      } catch (recordingError) {
-        console.error('[ERROR] Recording stop error:', recordingError);
+
+        clipboard.writeText(result.text);
+        console.log(`  [OK] Text copied to clipboard`);
+
+        updateFloatingButtonState('idle');
+        mainWindow?.hide();
+
+        setTimeout(async () => {
+          try {
+            await restoreWindowFocus(previousWindowFocus);
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const pasteKey = process.platform === 'darwin' ? 'command' : 'ctrl';
+            await execAsync(`python3 -c "import pyautogui; pyautogui.hotkey('${pasteKey}', 'v')"`);
+            console.log(`[DONE] PIPELINE COMPLETE - Total time: ${Date.now() - pipelineStart}ms`);
+          } catch (error) {
+            console.log(`  [INFO] Text is in clipboard - paste manually`);
+          }
+        }, 100);
+      } catch (error) {
+        console.error('[ERROR] Transcription error:', error);
         mainWindow.webContents.send('recording-state', {
           state: 'error',
-          error: recordingError instanceof Error ? recordingError.message : 'Recording failed'
+          error: error instanceof Error ? error.message : 'Transcription failed'
         });
         updateFloatingButtonState('idle');
-        setTimeout(() => {
-          mainWindow?.hide();
-        }, 2000);
+        setTimeout(() => { mainWindow?.hide(); }, 2000);
       }
     }
   }
@@ -377,15 +341,42 @@ app.whenReady().then(async () => {
   createFloatingButtonWindow();
   registerShortcuts();
 
-  // Load transcription service and model on startup
-  console.log('[INIT] Initializing transcription service...');
+  // Try streaming (Moonshine v2) first, fall back to batch transcription
+  console.log('[INIT] Checking for Moonshine v2 streaming...');
+  streamingModel = new MoonshineStreamingModel();
+
+  try {
+    const streamingAvailable = await streamingModel.isAvailable();
+    if (streamingAvailable) {
+      await streamingModel.initialize();
+      useStreaming = true;
+      console.log('[OK] Moonshine v2 streaming ready - real-time transcription enabled!');
+
+      // Forward partial transcription to the UI
+      streamingModel.on('transcription', (event: StreamingEvent) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('streaming-text', {
+            type: event.type,
+            text: event.text,
+          });
+        }
+      });
+    } else {
+      console.log('[INFO] Moonshine v2 not available, using batch mode');
+    }
+  } catch (error) {
+    console.log('[INFO] Moonshine v2 streaming init failed, using batch mode:', error);
+  }
+
+  // Also initialize batch transcription as fallback
+  console.log('[INIT] Initializing batch transcription service...');
   transcriptionService = new ModularTranscriptionService();
 
   try {
     await transcriptionService.initialize();
-    console.log('[OK] Model loaded successfully - ready for transcription!');
+    console.log('[OK] Batch transcription ready (fallback)');
   } catch (error) {
-    console.error('[ERROR] Failed to load model:', error);
+    console.error('[ERROR] Failed to load batch model:', error);
   }
 
   // Signal UI that app is ready
