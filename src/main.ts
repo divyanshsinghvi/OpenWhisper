@@ -1,7 +1,7 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, clipboard, screen } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import { RecordingManager } from './recording';
 import { ModularTranscriptionService } from './transcription-router';
@@ -9,6 +9,7 @@ import { MoonshineStreamingModel, StreamingEvent } from './models/MoonshineStrea
 import { DatasetManager } from './dataset';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 let mainWindow: BrowserWindow | null = null;
 let floatingButtonWindow: BrowserWindow | null = null;
@@ -22,6 +23,8 @@ let isTogglingRecording = false;
 let lastToggleAt = 0;
 let previousWindowFocus: any = null;
 let saveButtonPositionTimer: NodeJS.Timeout | null = null;
+let liveTypedText = '';
+let liveTypeQueue: Promise<void> = Promise.resolve();
 
 /**
  * Capture the currently focused window so we can restore focus later
@@ -57,6 +60,79 @@ async function restoreWindowFocus(windowInfo: any): Promise<boolean> {
     console.log(`[WARN] Could not restore window focus: ${error}`);
   }
   return false;
+}
+
+async function pasteClipboardIntoFocusedApp(): Promise<void> {
+  if (process.platform === 'darwin') {
+    await execFileAsync('osascript', ['-e', 'tell application "System Events" to keystroke "v" using command down']);
+    return;
+  }
+
+  await execAsync(`python3 -c "import pyautogui; pyautogui.hotkey('ctrl', 'v')"`);
+}
+
+function escapeAppleScriptText(text: string): string {
+  return text
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r?\n/g, '\\n');
+}
+
+function commonPrefixLength(a: string, b: string): number {
+  const limit = Math.min(a.length, b.length);
+  let index = 0;
+
+  while (index < limit && a[index] === b[index]) {
+    index++;
+  }
+
+  return index;
+}
+
+async function applyLiveTextChange(nextText: string): Promise<void> {
+  const normalizedText = nextText.trimStart();
+  if (!normalizedText || normalizedText === liveTypedText) return;
+
+  const sharedPrefix = commonPrefixLength(liveTypedText, normalizedText);
+  const deleteCount = liveTypedText.length - sharedPrefix;
+  const insertText = normalizedText.slice(sharedPrefix);
+
+  if (process.platform === 'darwin') {
+    const scriptParts: string[] = ['tell application "System Events"'];
+
+    if (deleteCount > 0) {
+      scriptParts.push(`repeat ${deleteCount} times`);
+      scriptParts.push('key code 51');
+      scriptParts.push('end repeat');
+    }
+
+    if (insertText) {
+      scriptParts.push(`keystroke "${escapeAppleScriptText(insertText)}"`);
+    }
+
+    scriptParts.push('end tell');
+    await execFileAsync('osascript', scriptParts.flatMap(part => ['-e', part]));
+    liveTypedText = normalizedText;
+    return;
+  }
+
+  if (deleteCount > 0) {
+    await execAsync(`python3 -c "import pyautogui; [pyautogui.press('backspace') for _ in range(${deleteCount})]"`);
+  }
+
+  if (insertText) {
+    await execAsync(`python3 -c "import pyautogui; pyautogui.write(${JSON.stringify(insertText)})"`);
+  }
+
+  liveTypedText = normalizedText;
+}
+
+function queueLiveTextChange(nextText: string): void {
+  liveTypeQueue = liveTypeQueue
+    .then(() => applyLiveTextChange(nextText))
+    .catch((error) => {
+      console.log(`  [WARN] Live typing failed: ${error instanceof Error ? error.message : String(error)}`);
+    });
 }
 
 // Floating button position persistence
@@ -201,6 +277,8 @@ async function toggleRecording() {
   if (!isRecording) {
     // Start recording - capture current window focus first
     previousWindowFocus = await captureWindowFocus();
+    liveTypedText = '';
+    liveTypeQueue = Promise.resolve();
 
     isRecording = true;
     console.log('\n' + '='.repeat(60));
@@ -250,6 +328,7 @@ async function toggleRecording() {
       // Streaming mode: stop and get final text
       try {
         const finalText = await streamingModel.stopStreaming();
+        await liveTypeQueue;
         console.log(`[RESULTS] STREAMING TRANSCRIPTION RESULTS:`);
         console.log(`  [OK] Text: "${finalText}"`);
         console.log(`  [OK] Model: Moonshine v2 (streaming)`);
@@ -261,18 +340,12 @@ async function toggleRecording() {
         updateFloatingButtonState('idle');
         mainWindow?.hide();
 
-        // Restore focus and paste
-        setTimeout(async () => {
-          try {
-            await restoreWindowFocus(previousWindowFocus);
-            await new Promise(resolve => setTimeout(resolve, 100));
-            const pasteKey = process.platform === 'darwin' ? 'command' : 'ctrl';
-            await execAsync(`python3 -c "import pyautogui; pyautogui.hotkey('${pasteKey}', 'v')"`);
-            console.log(`[DONE] PIPELINE COMPLETE - Total time: ${Date.now() - pipelineStart}ms`);
-          } catch (error) {
-            console.log(`  [INFO] Text is in clipboard - paste manually with ${process.platform === 'darwin' ? 'Cmd' : 'Ctrl'}+V`);
-          }
-        }, 100);
+        if (finalText.trim() && finalText.trim() !== liveTypedText.trim()) {
+          queueLiveTextChange(finalText);
+          await liveTypeQueue;
+        }
+
+        console.log(`[DONE] PIPELINE COMPLETE - Total time: ${Date.now() - pipelineStart}ms`);
       } catch (error) {
         console.error('[ERROR] Streaming stop error:', error);
         mainWindow.webContents.send('recording-state', {
@@ -326,10 +399,10 @@ async function toggleRecording() {
           try {
             await restoreWindowFocus(previousWindowFocus);
             await new Promise(resolve => setTimeout(resolve, 100));
-            const pasteKey = process.platform === 'darwin' ? 'command' : 'ctrl';
-            await execAsync(`python3 -c "import pyautogui; pyautogui.hotkey('${pasteKey}', 'v')"`);
+            await pasteClipboardIntoFocusedApp();
             console.log(`[DONE] PIPELINE COMPLETE - Total time: ${Date.now() - pipelineStart}ms`);
           } catch (error) {
+            console.log(`  [WARN] Auto-paste failed: ${error instanceof Error ? error.message : String(error)}`);
             console.log(`  [INFO] Text is in clipboard - paste manually`);
           }
         }, 100);
@@ -403,6 +476,10 @@ app.whenReady().then(async () => {
             type: event.type,
             text: event.text,
           });
+        }
+
+        if (isRecording && (event.type === 'partial' || event.type === 'final')) {
+          queueLiveTextChange(streamingModel?.getFullText() || event.text);
         }
       });
     } else {
