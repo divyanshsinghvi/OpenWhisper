@@ -28,19 +28,21 @@ export class ModelRouter {
   private initialized: boolean = false;
 
   constructor() {
-    // Register models in priority order (fastest first)
+    // Register models in priority order (SMALLEST & FASTEST FIRST)
     // First available model will be used, others skipped
     this.models = [
-      // FASTEST MODELS FIRST
-      new ParakeetModel('v3'),         // 0.6B - 3,333x real-time! 🔥 (FASTEST)
-      new CanaryModel(),               // 2.5B - 418x real-time, 5.63% WER (best accuracy)
-      new DistilWhisperModel('small'), // ~244M - 6x real-time
-      new MoonshineModel('base'),      // ~200M - 5-15x real-time
-      new FasterWhisperModel('base'),  // ~74M - 4x real-time
+      // SMALL & FAST MODELS (Practical for desktop)
+      new MoonshineModel('base'),      // ~200M - 5-15x real-time (BEST BALANCE)
       new MoonshineModel('tiny'),      // ~40M - ultra lightweight
+      new DistilWhisperModel('small'), // ~244M - 6x real-time (Best accuracy for size)
+      new FasterWhisperModel('base'),  // ~74M - 4x real-time
       new WhisperCppModel('base'),     // ~74M - 2x real-time
       new PythonWhisperModel('base'),  // ~74M - baseline
-      new DistilWhisperModel('medium'), // ~750M - slower
+
+      // LARGE MODELS (Only use if specifically needed)
+      // new ParakeetModel('v3'),      // 0.6B - 3,333x real-time (TOO LARGE)
+      // new CanaryModel(),            // 2.5B - 418x real-time (TOO LARGE)
+      // new DistilWhisperModel('medium'), // ~750M - slower (TOO LARGE)
     ];
   }
 
