@@ -34,7 +34,8 @@ export class TrayManager {
     }
     this.tray.setToolTip('Listen — voice dictation');
 
-    this.tray.on('click', () => this.callbacks.toggleRecording());
+    // Click just opens the menu — toggle is a menu item, so users can't start
+    // recording by accident when reaching for the icon.
     this.refresh();
   }
 
