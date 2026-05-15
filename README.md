@@ -16,8 +16,9 @@ https://github.com/user-attachments/assets/replace-with-your-upload
 ## Quick start
 
 ```bash
-brew install sox            # macOS audio capture
+brew install sox              # macOS audio capture
 npm install
+./install-nemotron.sh         # python deps + ONNX model (~630 MB)
 npm run build
 OPENWHISPER_TRANSCRIPTION_ENGINE=nemotron-streaming npm start
 ```
