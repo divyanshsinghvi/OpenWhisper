@@ -330,13 +330,20 @@ async function toggleRecording() {
 }
 
 function registerShortcuts() {
-  // Global hotkey: Ctrl+Shift+Space
-  const ret = globalShortcut.register('CommandOrControl+Shift+Space', () => {
-    toggleRecording();
-  });
+  const toggleShortcuts = process.platform === 'darwin'
+    ? ['Control+Shift+Space', 'Command+Shift+Space']
+    : ['CommandOrControl+Shift+Space'];
 
-  if (!ret) {
-    console.error('Global shortcut registration failed');
+  for (const shortcut of toggleShortcuts) {
+    const registered = globalShortcut.register(shortcut, () => {
+      toggleRecording();
+    });
+
+    if (registered) {
+      console.log(`[OK] Registered global shortcut: ${shortcut}`);
+    } else {
+      console.error(`[ERROR] Global shortcut registration failed: ${shortcut}`);
+    }
   }
 
   // ESC to cancel
