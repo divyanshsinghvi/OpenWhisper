@@ -27,8 +27,8 @@
     }
 
     #overlay {
-      width: 156px;
-      height: 48px;
+      width: 132px;
+      height: 36px;
       position: relative;
       display: flex;
       align-items: center;
@@ -80,9 +80,9 @@
     }
 
     .orb {
-      width: 32px;
-      height: 32px;
-      flex: 0 0 32px;
+      width: 22px;
+      height: 22px;
+      flex: 0 0 22px;
       position: relative;
       display: grid;
       place-items: center;
@@ -148,18 +148,21 @@
     }
 
     #label {
-      margin-bottom: 4px;
       overflow: hidden;
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: -0.02em;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
       line-height: 1;
       text-overflow: ellipsis;
       white-space: nowrap;
+      opacity: 0.85;
     }
 
+    #overlay.idle #label { display: none; }
+    #overlay.idle .waveform { display: none; }
+
     .waveform {
-      height: 18px;
+      height: 14px;
       display: flex;
       align-items: center;
       gap: 3px;
@@ -260,11 +263,11 @@
   </style>
 </head>
 <body>
-  <div id="overlay" class="idle" role="button" aria-label="Toggle OpenWhisper transcription">
+  <div id="overlay" class="idle" role="button" aria-label="Toggle dictation">
     <div class="drag-handle" aria-hidden="true"></div>
     <div class="orb" aria-hidden="true"></div>
     <div class="content">
-      <div id="label">Whisper</div>
+      <div id="label"></div>
       <div class="waveform" aria-hidden="true">
         <div class="wave-bar"></div>
         <div class="wave-bar"></div>
@@ -281,7 +284,7 @@
     const overlay = document.getElementById('overlay');
     const label = document.getElementById('label');
     const labels = {
-      idle: 'Whisper',
+      idle: '',
       recording: 'Listening',
       processing: 'Writing...'
     };
