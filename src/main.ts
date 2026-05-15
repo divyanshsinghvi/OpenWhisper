@@ -7,7 +7,6 @@ import { RecordingManager } from './recording';
 import { ModularTranscriptionService } from './transcription-router';
 import { MoonshineStreamingModel, StreamingEvent } from './models/MoonshineStreamingModel';
 import { NemotronStreamingModel, NemotronStreamingEvent } from './models/NemotronStreamingModel';
-import { DatasetManager } from './dataset';
 import { SettingsManager } from './settings';
 import { TrayManager } from './tray';
 
@@ -19,7 +18,6 @@ let floatingButtonWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let trayManager: TrayManager | null = null;
 let recordingManager: RecordingManager | null = null;
-let trainingRecordingManager: RecordingManager | null = null;
 let transcriptionService: ModularTranscriptionService | null = null;
 let streamingModel: MoonshineStreamingModel | null = null;
 let nemotronStreamingModel: NemotronStreamingModel | null = null;
@@ -33,11 +31,6 @@ let saveButtonPositionTimer: NodeJS.Timeout | null = null;
 let liveTypedText = '';
 let liveTypeQueue: Promise<void> = Promise.resolve();
 const settingsManager = new SettingsManager();
-
-function getDatasetManager(): DatasetManager {
-  const settings = settingsManager.get();
-  return new DatasetManager(settings.datasetDirectory || undefined);
-}
 
 function getActiveStreamingModel(): MoonshineStreamingModel | NemotronStreamingModel | null {
   return nemotronStreamingModel || streamingModel;
@@ -343,10 +336,6 @@ async function toggleRecording() {
         }
         isRecording = false;
         updateFloatingButtonState('idle');
-        if (trainingRecordingManager) {
-          trainingRecordingManager.cancelRecording();
-          trainingRecordingManager = null;
-        }
       }
     } else {
       // Batch mode: record with sox, then transcribe
@@ -381,38 +370,14 @@ async function toggleRecording() {
       try {
         const finalText = await activeStreamingModel.stopStreaming();
         await liveTypeQueue;
-        let trainingAudioPath: string | null = null;
 
-        if (trainingRecordingManager) {
-          trainingAudioPath = await trainingRecordingManager.stopRecording();
-          trainingRecordingManager = null;
-          console.log('[OK] Training audio capture stopped');
-        }
-
+        const engineLabel = nemotronStreamingModel ? 'Nemotron streaming' : 'Moonshine v2 streaming';
         console.log(`[RESULTS] STREAMING TRANSCRIPTION RESULTS:`);
         console.log(`  [OK] Text: "${finalText}"`);
-        console.log(`  [OK] Model: Moonshine v2 (streaming)`);
+        console.log(`  [OK] Model: ${engineLabel}`);
 
-        // Copy to clipboard
         clipboard.writeText(finalText);
         console.log(`  [OK] Text copied to clipboard`);
-
-        if (trainingAudioPath && finalText.trim()) {
-          try {
-            const fileSize = fs.existsSync(trainingAudioPath) ? fs.statSync(trainingAudioPath).size : 0;
-            const recordingDuration = fileSize > 44 ? Math.round(((fileSize - 44) / 32000) * 1000) : 0;
-            await getDatasetManager().saveEntry(trainingAudioPath, {
-              transcription: finalText,
-              confidence: 0.95,
-              model: nemotronStreamingModel ? 'Nemotron streaming' : 'Moonshine v2 streaming',
-              language: 'en',
-              duration: recordingDuration,
-              fileSize,
-            });
-          } catch (datasetError) {
-            console.error('[WARN] Failed to save streaming dataset entry:', datasetError);
-          }
-        }
 
         updateFloatingButtonState('idle');
         mainWindow?.hide();
@@ -431,10 +396,6 @@ async function toggleRecording() {
         });
         updateFloatingButtonState('idle');
         setTimeout(() => { mainWindow?.hide(); }, 2000);
-        if (trainingRecordingManager) {
-          trainingRecordingManager.cancelRecording();
-          trainingRecordingManager = null;
-        }
       }
     } else if (recordingManager) {
       // Batch mode: existing flow
@@ -460,20 +421,6 @@ async function toggleRecording() {
         console.log(`  [OK] Text: "${result.text}"`);
         console.log(`  [OK] Model: ${result.modelUsed}`);
         console.log(`  [INFO] Transcription: ${transcribeTime}ms`);
-
-        // Save to dataset
-        try {
-          if (!settingsManager.get().saveTrainingData) return;
-
-          const fileSize = fs.existsSync(audioFilePath) ? fs.statSync(audioFilePath).size : 0;
-          const recordingDuration = fileSize > 44 ? Math.round(((fileSize - 44) / 32000) * 1000) : 0;
-          await getDatasetManager().saveEntry(audioFilePath, {
-            transcription: result.text, confidence: result.confidence ?? 0,
-            model: result.modelUsed, language: 'en', duration: recordingDuration, fileSize: fileSize
-          });
-        } catch (datasetError) {
-          console.error('[WARN] Failed to save dataset entry:', datasetError);
-        }
 
         clipboard.writeText(result.text);
         console.log(`  [OK] Text copied to clipboard`);

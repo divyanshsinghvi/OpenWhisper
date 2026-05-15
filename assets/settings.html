@@ -177,17 +177,6 @@
       </label>
     </div>
 
-    <div class="row">
-      <div class="label">
-        <div class="name">Save training data</div>
-        <div class="desc">Keep wav recordings + transcripts locally for fine-tuning.</div>
-      </div>
-      <label class="toggle">
-        <input type="checkbox" id="saveTrainingData" />
-        <span class="slider"></span>
-      </label>
-    </div>
-
     <footer>
       <span id="status"></span>
       <button onclick="window.close()">Close</button>
@@ -201,7 +190,6 @@
     const ui = {
       engine: document.getElementById('engine'),
       autoStart: document.getElementById('autoStart'),
-      saveTrainingData: document.getElementById('saveTrainingData'),
       status: document.getElementById('status'),
       save: document.getElementById('saveBtn'),
     };
@@ -210,7 +198,6 @@
       const settings = await ipcRenderer.invoke('settings:get');
       ui.engine.value = settings.transcriptionEngine || 'nemotron-streaming';
       ui.autoStart.checked = !!settings.autoStart;
-      ui.saveTrainingData.checked = !!settings.saveTrainingData;
     }
 
     async function save() {
@@ -220,7 +207,6 @@
         await ipcRenderer.invoke('settings:save', {
           transcriptionEngine: ui.engine.value,
           autoStart: ui.autoStart.checked,
-          saveTrainingData: ui.saveTrainingData.checked,
         });
         ui.status.textContent = 'Saved. Engine change applies on next launch.';
       } catch (err) {

@@ -43,10 +43,6 @@ export interface ListenSettings {
   // Privacy
   saveHistory: boolean;
   historyLimit: number;
-  saveTrainingData: boolean;
-  datasetDirectory: string;
-  autoDelete: boolean;
-  autoDeleteDays: number;
 
   // UI
   theme: 'light' | 'dark' | 'system';
@@ -107,10 +103,6 @@ export class SettingsManager {
       // Privacy
       saveHistory: true,
       historyLimit: 100,
-      saveTrainingData: true,
-      datasetDirectory: '',
-      autoDelete: false,
-      autoDeleteDays: 30,
 
       // UI
       theme: 'system',
