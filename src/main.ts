@@ -6,7 +6,10 @@ import { promisify } from 'util';
 import { RecordingManager } from './recording';
 import { ModularTranscriptionService } from './transcription-router';
 import { MoonshineStreamingModel, StreamingEvent } from './models/MoonshineStreamingModel';
+import { ParakeetStreamingModel, ParakeetStreamingEvent } from './models/ParakeetStreamingModel';
+import { NemotronStreamingModel, NemotronStreamingEvent } from './models/NemotronStreamingModel';
 import { DatasetManager } from './dataset';
+import { SettingsManager } from './settings';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -14,8 +17,11 @@ const execFileAsync = promisify(execFile);
 let mainWindow: BrowserWindow | null = null;
 let floatingButtonWindow: BrowserWindow | null = null;
 let recordingManager: RecordingManager | null = null;
+let trainingRecordingManager: RecordingManager | null = null;
 let transcriptionService: ModularTranscriptionService | null = null;
 let streamingModel: MoonshineStreamingModel | null = null;
+let parakeetStreamingModel: ParakeetStreamingModel | null = null;
+let nemotronStreamingModel: NemotronStreamingModel | null = null;
 let useStreaming = false;
 let isRecording = false;
 let isTranscriptionReady = false;
@@ -25,6 +31,16 @@ let previousWindowFocus: any = null;
 let saveButtonPositionTimer: NodeJS.Timeout | null = null;
 let liveTypedText = '';
 let liveTypeQueue: Promise<void> = Promise.resolve();
+const settingsManager = new SettingsManager();
+
+function getDatasetManager(): DatasetManager {
+  const settings = settingsManager.get();
+  return new DatasetManager(settings.datasetDirectory || undefined);
+}
+
+function getActiveStreamingModel(): MoonshineStreamingModel | ParakeetStreamingModel | NemotronStreamingModel | null {
+  return nemotronStreamingModel || parakeetStreamingModel || streamingModel;
+}
 
 /**
  * Capture the currently focused window so we can restore focus later
@@ -289,15 +305,27 @@ async function toggleRecording() {
     mainWindow.webContents.send('recording-state', { state: 'recording' });
     updateFloatingButtonState('recording');
 
-    if (useStreaming && streamingModel) {
-      // Streaming mode: Moonshine v2 handles mic directly
+    const activeStreamingModel = getActiveStreamingModel();
+
+    if (useStreaming && activeStreamingModel) {
+      // Streaming engines own the microphone directly; running a parallel
+      // training-audio sox capture races the mic and breaks transcription.
       try {
-        await streamingModel.startStreaming();
+        await activeStreamingModel.startStreaming();
         console.log('[OK] Streaming transcription started');
       } catch (error) {
         console.error('[ERROR] Streaming start error:', error);
+        try {
+          await activeStreamingModel.stopStreaming();
+        } catch {
+          // Ignore cleanup errors from a partially-started stream.
+        }
         isRecording = false;
         updateFloatingButtonState('idle');
+        if (trainingRecordingManager) {
+          trainingRecordingManager.cancelRecording();
+          trainingRecordingManager = null;
+        }
       }
     } else {
       // Batch mode: record with sox, then transcribe
@@ -324,11 +352,21 @@ async function toggleRecording() {
     mainWindow.webContents.send('recording-state', { state: 'processing' });
     updateFloatingButtonState('processing');
 
-    if (useStreaming && streamingModel) {
+    const activeStreamingModel = getActiveStreamingModel();
+
+    if (useStreaming && activeStreamingModel) {
       // Streaming mode: stop and get final text
       try {
-        const finalText = await streamingModel.stopStreaming();
+        const finalText = await activeStreamingModel.stopStreaming();
         await liveTypeQueue;
+        let trainingAudioPath: string | null = null;
+
+        if (trainingRecordingManager) {
+          trainingAudioPath = await trainingRecordingManager.stopRecording();
+          trainingRecordingManager = null;
+          console.log('[OK] Training audio capture stopped');
+        }
+
         console.log(`[RESULTS] STREAMING TRANSCRIPTION RESULTS:`);
         console.log(`  [OK] Text: "${finalText}"`);
         console.log(`  [OK] Model: Moonshine v2 (streaming)`);
@@ -336,6 +374,27 @@ async function toggleRecording() {
         // Copy to clipboard
         clipboard.writeText(finalText);
         console.log(`  [OK] Text copied to clipboard`);
+
+        if (trainingAudioPath && finalText.trim()) {
+          try {
+            const fileSize = fs.existsSync(trainingAudioPath) ? fs.statSync(trainingAudioPath).size : 0;
+            const recordingDuration = fileSize > 44 ? Math.round(((fileSize - 44) / 32000) * 1000) : 0;
+            await getDatasetManager().saveEntry(trainingAudioPath, {
+              transcription: finalText,
+              confidence: 0.95,
+              model: nemotronStreamingModel
+                ? 'Nemotron streaming'
+                : parakeetStreamingModel
+                  ? 'Parakeet Unified streaming'
+                  : 'Moonshine v2 streaming',
+              language: 'en',
+              duration: recordingDuration,
+              fileSize,
+            });
+          } catch (datasetError) {
+            console.error('[WARN] Failed to save streaming dataset entry:', datasetError);
+          }
+        }
 
         updateFloatingButtonState('idle');
         mainWindow?.hide();
@@ -354,6 +413,10 @@ async function toggleRecording() {
         });
         updateFloatingButtonState('idle');
         setTimeout(() => { mainWindow?.hide(); }, 2000);
+        if (trainingRecordingManager) {
+          trainingRecordingManager.cancelRecording();
+          trainingRecordingManager = null;
+        }
       }
     } else if (recordingManager) {
       // Batch mode: existing flow
@@ -367,7 +430,14 @@ async function toggleRecording() {
 
         const transcribeStart = Date.now();
         const result = await transcriptionService.transcribe(audioFilePath, {
-          routingPreferences: { priority: 'balance', platform: 'desktop', language: 'en' }
+          transcriptionOptions: {
+            model: settingsManager.get().parakeetModelName,
+          },
+          routingPreferences: {
+            priority: 'accuracy',
+            platform: 'desktop',
+            language: 'en',
+          }
         });
         const transcribeTime = Date.now() - transcribeStart;
 
@@ -378,10 +448,11 @@ async function toggleRecording() {
 
         // Save to dataset
         try {
-          const datasetManager = new DatasetManager();
+          if (!settingsManager.get().saveTrainingData) return;
+
           const fileSize = fs.existsSync(audioFilePath) ? fs.statSync(audioFilePath).size : 0;
           const recordingDuration = fileSize > 44 ? Math.round(((fileSize - 44) / 32000) * 1000) : 0;
-          await datasetManager.saveEntry(audioFilePath, {
+          await getDatasetManager().saveEntry(audioFilePath, {
             transcription: result.text, confidence: result.confidence ?? 0,
             model: result.modelUsed, language: 'en', duration: recordingDuration, fileSize: fileSize
           });
@@ -438,17 +509,6 @@ function registerShortcuts() {
     }
   }
 
-  // ESC to cancel
-  globalShortcut.register('Escape', () => {
-    if (mainWindow?.isVisible()) {
-      if (isRecording && recordingManager) {
-        recordingManager.cancelRecording();
-        isRecording = false;
-      }
-      mainWindow.hide();
-      mainWindow.webContents.send('recording-state', { state: 'idle' });
-    }
-  });
 }
 
 app.whenReady().then(async () => {
@@ -456,37 +516,114 @@ app.whenReady().then(async () => {
   createFloatingButtonWindow();
   registerShortcuts();
 
+  const settings = settingsManager.get();
+  const transcriptionEngine = process.env.OPENWHISPER_TRANSCRIPTION_ENGINE
+    || settings.transcriptionEngine
+    || 'auto';
+  const shouldUseNemotronStreaming = transcriptionEngine === 'nemotron-streaming';
+  const shouldUseParakeetStreaming = transcriptionEngine === 'parakeet-streaming';
+  const shouldUseMoonshineStreaming =
+    !shouldUseNemotronStreaming
+    && !shouldUseParakeetStreaming
+    && transcriptionEngine !== 'parakeet';
+
   // Try streaming (Moonshine v2) first, fall back to batch transcription
-  console.log('[INIT] Checking for Moonshine v2 streaming...');
-  streamingModel = new MoonshineStreamingModel();
+  if (shouldUseNemotronStreaming) {
+    console.log('[INIT] Checking for Nemotron streaming...');
+    nemotronStreamingModel = new NemotronStreamingModel();
 
-  try {
-    const streamingAvailable = await streamingModel.isAvailable();
-    if (streamingAvailable) {
-      await streamingModel.initialize();
-      useStreaming = true;
-      isTranscriptionReady = true;
-      updateFloatingButtonState('idle');
-      console.log('[OK] Moonshine v2 streaming ready - real-time transcription enabled!');
+    try {
+      const streamingAvailable = await nemotronStreamingModel.isAvailable();
+      if (streamingAvailable) {
+        await nemotronStreamingModel.initialize();
+        useStreaming = true;
+        isTranscriptionReady = true;
+        updateFloatingButtonState('idle');
+        console.log('[OK] Nemotron streaming ready');
 
-      // Forward partial transcription to the UI
-      streamingModel.on('transcription', (event: StreamingEvent) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('streaming-text', {
-            type: event.type,
-            text: event.text,
-          });
-        }
+        nemotronStreamingModel.on('transcription', (event: NemotronStreamingEvent) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('streaming-text', {
+              type: event.type,
+              text: event.text,
+            });
+          }
 
-        if (isRecording && (event.type === 'partial' || event.type === 'final')) {
-          queueLiveTextChange(streamingModel?.getFullText() || event.text);
-        }
-      });
-    } else {
-      console.log('[INFO] Moonshine v2 not available, using batch mode');
+          if (isRecording && (event.type === 'partial' || event.type === 'final')) {
+            queueLiveTextChange(nemotronStreamingModel?.getFullText() || event.text);
+          }
+        });
+      } else {
+        console.log('[INFO] Nemotron streaming not available (sherpa-onnx or model files missing)');
+      }
+    } catch (error) {
+      console.log('[INFO] Nemotron streaming init failed:', error);
     }
-  } catch (error) {
-    console.log('[INFO] Moonshine v2 streaming init failed, using batch mode:', error);
+  } else if (shouldUseParakeetStreaming) {
+    console.log('[INIT] Checking for Parakeet Unified streaming...');
+    parakeetStreamingModel = new ParakeetStreamingModel();
+
+    try {
+      const streamingAvailable = await parakeetStreamingModel.isAvailable();
+      if (streamingAvailable) {
+        await parakeetStreamingModel.initialize();
+        useStreaming = true;
+        isTranscriptionReady = true;
+        updateFloatingButtonState('idle');
+        console.log('[OK] Parakeet Unified streaming ready');
+
+        parakeetStreamingModel.on('transcription', (event: ParakeetStreamingEvent) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('streaming-text', {
+              type: event.type,
+              text: event.text,
+            });
+          }
+
+          if (isRecording && (event.type === 'partial' || event.type === 'final')) {
+            queueLiveTextChange(parakeetStreamingModel?.getFullText() || event.text);
+          }
+        });
+      } else {
+        console.log('[INFO] Parakeet streaming not available, using batch mode');
+      }
+    } catch (error) {
+      console.log('[INFO] Parakeet streaming init failed, using batch mode:', error);
+    }
+  } else if (shouldUseMoonshineStreaming) {
+    console.log('[INIT] Checking for Moonshine v2 streaming...');
+    streamingModel = new MoonshineStreamingModel();
+
+    try {
+      const streamingAvailable = await streamingModel.isAvailable();
+      if (streamingAvailable) {
+        await streamingModel.initialize();
+        useStreaming = true;
+        isTranscriptionReady = true;
+        updateFloatingButtonState('idle');
+        console.log('[OK] Moonshine v2 streaming ready - real-time transcription enabled!');
+
+        // Forward partial transcription to the UI
+        streamingModel.on('transcription', (event: StreamingEvent) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('streaming-text', {
+              type: event.type,
+              text: event.text,
+            });
+          }
+
+          if (isRecording && (event.type === 'partial' || event.type === 'final')) {
+            queueLiveTextChange(streamingModel?.getFullText() || event.text);
+          }
+        });
+      } else {
+        console.log('[INFO] Moonshine v2 not available, using batch mode');
+      }
+    } catch (error) {
+      console.log('[INFO] Moonshine v2 streaming init failed, using batch mode:', error);
+    }
+  } else {
+    console.log('[INIT] Skipping Moonshine streaming; configured engine:', transcriptionEngine);
   }
 
   if (!useStreaming) {
@@ -526,6 +663,9 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  streamingModel?.cleanup();
+  parakeetStreamingModel?.cleanup();
+  nemotronStreamingModel?.cleanup();
   if (floatingButtonWindow && !floatingButtonWindow.isDestroyed()) {
     floatingButtonWindow.destroy();
   }

@@ -30,6 +30,8 @@ export interface ListenSettings {
 
   // Model
   preferredModel: string | 'auto';
+  transcriptionEngine: 'moonshine-streaming' | 'parakeet-streaming' | 'parakeet' | 'auto';
+  parakeetModelName: string;
   modelPriority: 'speed' | 'accuracy' | 'balance';
   enableStreaming: boolean;
 
@@ -42,6 +44,8 @@ export interface ListenSettings {
   // Privacy
   saveHistory: boolean;
   historyLimit: number;
+  saveTrainingData: boolean;
+  datasetDirectory: string;
   autoDelete: boolean;
   autoDeleteDays: number;
 
@@ -91,6 +95,8 @@ export class SettingsManager {
 
       // Model
       preferredModel: 'auto',
+      transcriptionEngine: 'auto',
+      parakeetModelName: 'nvidia/parakeet-tdt-0.6b-v3',
       modelPriority: 'balance',
       enableStreaming: false,
 
@@ -103,6 +109,8 @@ export class SettingsManager {
       // Privacy
       saveHistory: true,
       historyLimit: 100,
+      saveTrainingData: true,
+      datasetDirectory: '',
       autoDelete: false,
       autoDeleteDays: 30,
 

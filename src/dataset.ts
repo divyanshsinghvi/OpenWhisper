@@ -22,14 +22,46 @@ export interface DatasetEntry {
 export class DatasetManager {
   private datasetDir: string;
 
-  constructor() {
-    // Create dataset directory in user's home folder
-    this.datasetDir = path.join(process.env.HOME || process.env.USERPROFILE || '', '.listen', 'dataset');
+  constructor(datasetDir?: string) {
+    this.datasetDir = datasetDir || process.env.OPENWHISPER_DATASET_DIR || this.getDefaultDatasetDir();
 
     if (!fs.existsSync(this.datasetDir)) {
       fs.mkdirSync(this.datasetDir, { recursive: true });
       console.log(`[DIR] Dataset directory created: ${this.datasetDir}`);
     }
+  }
+
+  private getDefaultDatasetDir(): string {
+    const home = process.env.HOME || process.env.USERPROFILE || '';
+    const googleDriveDir = this.findGoogleDriveDir(home);
+
+    if (googleDriveDir) {
+      return path.join(googleDriveDir, 'OpenWhisper', 'training-data');
+    }
+
+    return path.join(home, '.listen', 'dataset');
+  }
+
+  private findGoogleDriveDir(home: string): string | null {
+    const cloudStorageDir = path.join(home, 'Library', 'CloudStorage');
+
+    try {
+      if (fs.existsSync(cloudStorageDir)) {
+        const googleDrive = fs.readdirSync(cloudStorageDir)
+          .find(entry => entry.startsWith('GoogleDrive'));
+
+        if (googleDrive) {
+          const basePath = path.join(cloudStorageDir, googleDrive);
+          const myDrivePath = path.join(basePath, 'My Drive');
+          return fs.existsSync(myDrivePath) ? myDrivePath : basePath;
+        }
+      }
+    } catch (error) {
+      console.log('[WARN] Could not inspect Google Drive CloudStorage directory:', error);
+    }
+
+    const legacyPath = path.join(home, 'Google Drive');
+    return fs.existsSync(legacyPath) ? legacyPath : null;
   }
 
   /**
@@ -70,6 +102,18 @@ export class DatasetManager {
 
       fs.writeFileSync(jsonPath, JSON.stringify(entry, null, 2), 'utf-8');
       console.log(`[OK] Metadata saved: ${jsonFile}`);
+
+      const manifestPath = path.join(this.datasetDir, 'manifest.jsonl');
+      fs.appendFileSync(manifestPath, JSON.stringify({
+        audio_filepath: wavPath,
+        text: data.transcription,
+        duration: data.duration / 1000,
+        model: data.model,
+        language: data.language,
+        confidence: data.confidence,
+        timestamp,
+      }) + '\n', 'utf-8');
+      console.log('[OK] Manifest updated: manifest.jsonl');
 
       console.log(`\n[ENTRY] Dataset Entry Added:`);
       console.log(`  Text: "${data.transcription}"`);

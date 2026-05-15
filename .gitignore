@@ -6,3 +6,7 @@ release/
 .DS_Store
 *.wav
 *.mp3
+
+# Large local-only artifacts
+/models/
+/temp/

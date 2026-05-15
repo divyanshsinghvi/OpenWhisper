@@ -1,8 +1,8 @@
 /**
  * ParakeetModel.ts
  *
- * NVIDIA Parakeet TDT model implementation
- * FASTEST MODEL: 3,333x real-time (transcribes 1 hour in 1 second!)
+ * NVIDIA Parakeet model implementation
+ * Supports the unified 0.6B model for offline and streaming-capable ASR.
  *
  * Leaderboard: #1 in speed, competitive accuracy (6.32% WER)
  * Supports: 25 European languages
@@ -14,16 +14,21 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import { STTModel, TranscriptionOptions, TranscriptionResult, ModelInfo } from './ModelInterface';
+import { SettingsManager } from '../settings';
 
 export class ParakeetModel extends STTModel {
-  private modelVariant: 'v2' | 'v3';
+  private modelVariant: 'unified' | 'v2' | 'v3';
+  private configuredModelName: string;
   private static serverProcess: ChildProcess | null = null;
   private static initPromise: Promise<void> | null = null;
   private static lineBuffer: string = ''; // Buffer for incomplete lines from stdout
 
-  constructor(modelVariant: 'v2' | 'v3' = 'v3') {
+  constructor(modelVariant: 'unified' | 'v2' | 'v3' = 'unified') {
     super('parakeet', undefined);
     this.modelVariant = modelVariant;
+    this.configuredModelName = process.env.PARAKEET_MODEL_NAME
+      || new SettingsManager().get().parakeetModelName
+      || 'nvidia/parakeet-tdt-0.6b-v3';
   }
 
   /**
@@ -41,7 +46,15 @@ export class ParakeetModel extends STTModel {
     ParakeetModel.initPromise = new Promise((resolve, reject) => {
       try {
         const serverScript = path.join(__dirname, '..', '..', 'parakeet_server.py');
-        ParakeetModel.serverProcess = spawn('python3', [serverScript]);
+        const mplConfigDir = path.join(__dirname, '..', '..', 'temp', 'matplotlib');
+        fs.mkdirSync(mplConfigDir, { recursive: true });
+
+        ParakeetModel.serverProcess = spawn('python3', [serverScript], {
+          env: {
+            ...process.env,
+            MPLCONFIGDIR: mplConfigDir,
+          },
+        });
 
         let initialized = false;
 
@@ -120,9 +133,11 @@ export class ParakeetModel extends STTModel {
     }
 
     const language = options?.language || 'en';
-    const modelName = this.modelVariant === 'v3'
-      ? 'nvidia/parakeet-tdt-0.6b-v3'  // 25 languages
-      : 'nvidia/parakeet-tdt-0.6b-v2'; // English only
+    const modelName = options?.model || this.configuredModelName || (this.modelVariant === 'unified'
+      ? 'nvidia/parakeet-unified-en-0.6b'
+      : this.modelVariant === 'v3'
+        ? 'nvidia/parakeet-tdt-0.6b-v3'  // 25 languages
+        : 'nvidia/parakeet-tdt-0.6b-v2'); // English only
 
     // Send request to server
     return new Promise((resolve, reject) => {
@@ -188,8 +203,10 @@ export class ParakeetModel extends STTModel {
 
   getInfo(): ModelInfo {
     return {
-      name: `Parakeet TDT 0.6B ${this.modelVariant.toUpperCase()}`,
-      version: this.modelVariant,
+      name: this.modelVariant === 'unified'
+        ? 'Parakeet Unified EN 0.6B'
+        : `Parakeet TDT 0.6B ${this.modelVariant.toUpperCase()}`,
+      version: this.configuredModelName,
       type: 'canary', // Using existing type
       speed: 'ultra-fast',
       accuracy: 'excellent',
@@ -199,7 +216,7 @@ export class ParakeetModel extends STTModel {
         : ['en'],
       requiresGPU: false, // Can run on CPU, but GPU recommended for max speed
       estimatedMemory: '600MB',
-      rtfSpeed: 3333, // 🔥 3,333x real-time!
+      rtfSpeed: this.modelVariant === 'unified' ? 100 : 3333,
     };
   }
 

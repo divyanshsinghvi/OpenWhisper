@@ -34,6 +34,7 @@ export class ModelRouter {
       // SMALL & FAST MODELS (Practical for desktop)
       new MoonshineModel('base'),      // ~200M - 5-15x real-time (BEST BALANCE)
       new MoonshineModel('tiny'),      // ~40M - ultra lightweight
+      new ParakeetModel('unified'),    // 0.6B - better English ASR, streaming-capable
       new DistilWhisperModel('small'), // ~244M - 6x real-time (Best accuracy for size)
       new FasterWhisperModel('base'),  // ~74M - 4x real-time
       new WhisperCppModel('base'),     // ~74M - 2x real-time

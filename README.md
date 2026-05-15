@@ -1,154 +1,57 @@
-# Listen - Voice-to-Text App
+# OpenWhisper
 
-A multi-platform voice-to-text app with intelligent model routing, allowing you to speak instead of typing.
+System-wide voice dictation. Press a key, speak, watch your words appear in any textbox.
+100% offline.
 
-## Features
+![Hero](./docs/media/hero.png)
 
-### Quick Dictation Mode
-- 🎙️ **System-wide voice recording** - Press hotkey anywhere to dictate
-- 📋 **Automatic clipboard copy** - Paste transcribed text instantly
-- 🪟 **Always-on-top overlay** - Non-intrusive UI
-- ⚡ **Ultra-fast transcription** - Results in seconds
+## Demo
 
-### Meeting Mode 🆕
-- 🎬 **Long-form recording** - Capture hours-long meetings
-- 📝 **Live transcripts** - See transcription build in real-time
-- ⏱️ **Timestamped segments** - Jump to any part of the conversation
-- 💾 **Auto-save history** - Never lose a meeting transcript
-- 📤 **Export to Markdown/Text** - Share insights easily
-- 🔍 **Search meetings** - Find past conversations quickly
+https://github.com/user-attachments/assets/replace-with-your-upload
 
-### Models & Intelligence
-- 🤖 **Multiple SOTA STT models** with automatic selection:
-  - **Parakeet TDT v3** (3,333x real-time with GPU, 6.32% WER)
-  - **Moonshine v2** (5-15x real-time, streaming support)
-  - **Distil-Whisper** (6x faster than Whisper Large v3, excellent accuracy)
-  - Faster-Whisper, Whisper.cpp, Python Whisper, Canary Qwen
-- 🧠 **Intelligent model routing** - Auto-selects best model for your needs
-- 🔒 **100% offline** - All processing on-device, no cloud services
+> Or drop a `.mp4`/`.gif` at `docs/media/demo.mp4` and reference it here.
 
-### Platform Support
-- 📱 **Native iOS (Swift + WhisperKit)** and **Android (Kotlin + TFLite)** apps
-- 💻 **Desktop** - macOS, Windows, Linux 
+![Dictation in action](./docs/media/demo.gif)
 
-## Setup
+## Quick start
 
-1. Install dependencies:
 ```bash
+brew install sox            # macOS audio capture
 npm install
-```
-
-2. Install an STT model (choose one or more):
-
-   | Model | Install | Best for |
-   |-------|---------|----------|
-   | **Parakeet TDT v3** | `./install-parakeet.sh` | Fastest, 25 languages |
-   | **Moonshine v2** | `./install-moonshine.sh` | Mobile/edge, streaming |
-   | **Distil-Whisper** | `./install-distil-whisper.sh` | English accuracy |
-   | **Faster-Whisper** | `pip install faster-whisper` | Good all-rounder |
-   | **whisper.cpp** | `./setup-whisper.sh` | Low-level C++ |
-   | **Python Whisper** | `./install-python-whisper.sh` | Fallback |
-   | **Canary Qwen 2.5B** | `./install-canary.sh` | Max accuracy |
-
-   > The app auto-selects the fastest available model. Install multiple for automatic fallback. See [MODEL_COMPARISON.md](./MODEL_COMPARISON.md) for benchmarks.
-
-3. Build and run:
-```bash
 npm run build
-npm start
+OPENWHISPER_TRANSCRIPTION_ENGINE=nemotron-streaming npm start
 ```
 
-Or run in development mode:
-```bash
-npm run dev
-```
+Press `Ctrl+Shift+Space` (or `Cmd+Shift+Space` on macOS) → speak → text streams into your focused textbox.
 
-## Usage
+## How it works
 
-### Quick Dictation (Default Mode)
+A long-lived Python process owns the microphone and runs a streaming ASR model
+via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). Partials are emitted
+over stdio as you speak and typed into whatever app has focus.
 
-1. Press `Ctrl+Shift+Space` (or `Cmd+Shift+Space` on macOS) to start recording
-2. Speak your text
-3. Press the hotkey again to stop recording
-4. The transcribed text will be automatically copied to clipboard
-5. Paste (Ctrl+V/Cmd+V) in any application
+![Architecture](./docs/media/architecture.png)
 
-### Meeting Mode 🆕
+## Engines
 
-1. Press `Ctrl+Shift+M` (or `Cmd+Shift+M` on macOS) to open Meeting Mode
-2. Click **"Start Meeting"** button
-3. Record your conversation (minutes to hours)
-4. Click **"Stop & Transcribe"** when done
-5. Wait for batch processing (progress bar shows status)
-6. Review transcript with timestamps
-7. Click **"Save"** or **"Export"** to save to Markdown/Text
+| Engine | Model | Latency | Notes |
+|---|---|---|---|
+| `nemotron-streaming` *(recommended)* | NVIDIA Nemotron Speech Streaming En 0.6B (ONNX, int8) | ~100 ms | True streaming. Auto-downloaded. |
+| `moonshine` | Moonshine v2 | ~150 ms | Multilingual fallback. |
+| `parakeet-streaming` | Parakeet TDT v3 | bursty | Not natively streaming; left for batch use. |
 
-**Meeting Features:**
-- ⏱️ Real-time recording timer
-- 📊 Progress tracking during transcription
-- 🔖 Automatic timestamps for each segment
-- 💾 Auto-saved to meeting history
-- 📤 Export to Markdown, Text, or JSON
+Switch engines via `OPENWHISPER_TRANSCRIPTION_ENGINE` or in Settings.
 
-See [MEETING_MODE.md](./MEETING_MODE.md) for detailed meeting mode documentation.
+## Adding media
 
-## Keyboard Shortcuts
+Drop assets into `docs/media/`:
 
-- `Ctrl+Shift+Space` - Start/Stop recording
-- `Esc` - Cancel recording and close overlay
+- `hero.png` — header screenshot
+- `demo.gif` or `demo.mp4` — short recording of dictation in action
+- `architecture.png` — optional diagram
 
-## Model Selection & Routing
-
-Listen uses an **intelligent routing system** that automatically selects the best available model based on your requirements.
-
-**Recommended Models:**
-- **Desktop (Speed)**: Parakeet TDT v3 (fastest, 25 languages)
-- **Desktop (English accuracy)**: Distil-Whisper (6x faster than Whisper Large v3)
-- **Desktop (Multilingual)**: Moonshine v2 Base (streaming, good accuracy)
-- **Mobile (iOS/Android)**: Moonshine v2 Tiny (ultra-fast, ~34MB)
-
-See [MODEL_COMPARISON.md](./MODEL_COMPARISON.md) for detailed benchmarks and comparisons.
-
-## Platform Support
-
-- ✅ **macOS** (Desktop - Electron, requires `brew install sox`)
-- ✅ **Linux** (Desktop - Electron)
-- ✅ **Windows** (Desktop - Initial support)
-- ✅ **iOS 16+** (Native Swift app) - See [mobile/ios/README.md](./mobile/ios/README.md)
-- ✅ **Android 7+** (Native Kotlin app) - See [mobile/android/README.md](./mobile/android/README.md)
-
-## Project Structure
-
-```
-listen/
-├── src/                    # TypeScript source code
-│   ├── models/            # STT model implementations
-│   ├── assets/            # UI (HTML/CSS)
-│   └── main.ts            # Electron entry point
-├── scripts/               # Python utility scripts
-│   └── record_audio_windows.py
-├── docs/                  # Documentation
-└── mobile/                # Native iOS & Android apps
-```
-
-See [ARCHITECTURE.md](./docs/ARCHITECTURE.md#file-structure) for complete structure.
-
-## Documentation
-
-- [Architecture Overview](./docs/ARCHITECTURE.md) - System design and modular architecture
-- [Model Comparison](./MODEL_COMPARISON.md) - Detailed STT model benchmarks
-- [Quick Start Guide](./QUICKSTART.md) - Get up and running in 5 minutes
-- [iOS README](./mobile/ios/README.md) - iOS app documentation
-- [Android README](./mobile/android/README.md) - Android app documentation
-
-## Requirements
-
-- Node.js 18+
-- At least one STT model installed (see setup above)
-- Audio recording:
-  - **macOS**: `sox` (`brew install sox`)
-  - **Linux**: `arecord` (ALSA) or `sox`
-  - **Windows**: PyAudioWPatch (installed automatically)
+GitHub also lets you drag a video into the issue/PR composer to get a
+`user-attachments` URL — paste that under **Demo**.
 
 ## License
 

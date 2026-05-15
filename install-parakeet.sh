@@ -1,16 +1,16 @@
 #!/bin/bash
 
-# Install NVIDIA Parakeet TDT - FASTEST STT model (3,333x real-time!)
+# Install NVIDIA Parakeet Unified - fast, streaming-capable STT model
 # Fixed for WSL2/Ubuntu system package conflicts
 
 set -e
 
-echo "🚀 Installing NVIDIA Parakeet TDT 0.6B v3"
+echo "🚀 Installing NVIDIA Parakeet Unified EN 0.6B"
 echo "========================================"
 echo ""
-echo "Performance: 3,333x real-time (transcribes 1 hour in 1 second!)"
-echo "Accuracy: 6.32% WER"
-echo "Languages: 25 European languages"
+echo "Performance: offline + streaming-capable English ASR"
+echo "Accuracy: ~5.91% offline WER on NVIDIA's reported benchmark"
+echo "Language: English"
 echo ""
 
 # Check if Python is installed
@@ -39,11 +39,10 @@ echo ""
 echo "✅ Parakeet TDT installation complete!"
 echo ""
 echo "Model details:"
-echo "- Name: nvidia/parakeet-tdt-0.6b-v3"
+echo "- Name: nvidia/parakeet-unified-en-0.6b"
 echo "- Size: ~600MB (downloads on first use)"
-echo "- Speed: 3,333x real-time 🔥"
-echo "- Accuracy: 6.32% WER (excellent)"
-echo "- Languages: 25 (en, de, fr, es, it, pt, pl, nl, ro, cs, sk, bg, hr, sl, sr, mk, uk, be, et, lv, lt, mt, ga, cy)"
+echo "- Accuracy: ~5.91% offline WER"
+echo "- Language: English"
 echo ""
 echo "⚠️  Important: Make sure ~/.local/bin is in your PATH"
 echo "Add to ~/.bashrc if needed:"
