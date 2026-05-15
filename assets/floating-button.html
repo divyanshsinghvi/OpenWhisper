@@ -21,65 +21,76 @@
       padding-bottom: 20px;
     }
 
-    /* Minimal floating button */
+    /* Ultra-minimal wave indicator bar */
     #floating-button {
-      width: 48px;
-      height: 48px;
-      border-radius: 24px;
-      background: rgba(255, 255, 255, 0.95);
-      border: 2px solid rgba(0, 0, 0, 0.1);
-      backdrop-filter: blur(20px);
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+      width: 75px;
+      height: 20px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       display: flex;
       align-items: center;
       justify-content: center;
+      gap: 3px;
       cursor: pointer;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: all 0.2s ease;
       position: relative;
+      padding: 0 8px;
     }
 
     #floating-button:hover {
-      transform: scale(1.1);
-      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+      background: rgba(255, 255, 255, 1);
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
     }
 
-    /* Recording state - red with pulse */
+    /* Wave bars */
+    .wave-bar {
+      width: 2px;
+      height: 6px;
+      background: #9ca3af;
+      border-radius: 1px;
+      transition: all 0.1s ease;
+    }
+
+    /* Recording state - animated waves */
     #floating-button.recording {
-      background: rgba(239, 68, 68, 0.95);
-      border-color: rgba(220, 38, 38, 0.3);
-      animation: pulse 1.5s ease-in-out infinite;
+      background: rgba(239, 68, 68, 0.9);
+      border-color: rgba(220, 38, 38, 0.2);
     }
 
-    @keyframes pulse {
-      0%, 100% {
-        transform: scale(1);
-        box-shadow: 0 4px 20px rgba(239, 68, 68, 0.3);
-      }
-      50% {
-        transform: scale(1.05);
-        box-shadow: 0 8px 40px rgba(239, 68, 68, 0.5);
-      }
+    #floating-button.recording .wave-bar {
+      background: #ffffff;
+      animation: wave 0.8s ease-in-out infinite;
+    }
+
+    #floating-button.recording .wave-bar:nth-child(1) { animation-delay: 0s; }
+    #floating-button.recording .wave-bar:nth-child(2) { animation-delay: 0.1s; }
+    #floating-button.recording .wave-bar:nth-child(3) { animation-delay: 0.2s; }
+    #floating-button.recording .wave-bar:nth-child(4) { animation-delay: 0.3s; }
+    #floating-button.recording .wave-bar:nth-child(5) { animation-delay: 0.2s; }
+    #floating-button.recording .wave-bar:nth-child(6) { animation-delay: 0.1s; }
+
+    @keyframes wave {
+      0%, 100% { height: 4px; }
+      50% { height: 14px; }
     }
 
     /* Processing state */
     #floating-button.processing {
-      background: rgba(251, 146, 60, 0.95);
-      border-color: rgba(249, 115, 22, 0.3);
+      background: rgba(251, 146, 60, 0.9);
+      border-color: rgba(249, 115, 22, 0.2);
     }
 
-    .mic-icon {
-      width: 24px;
-      height: 24px;
-      fill: #6b7280;
-      transition: fill 0.2s;
+    #floating-button.processing .wave-bar {
+      background: #ffffff;
+      animation: pulse-bar 1s ease-in-out infinite;
     }
 
-    #floating-button.recording .mic-icon {
-      fill: #ffffff;
-    }
-
-    #floating-button.processing .mic-icon {
-      fill: #ffffff;
+    @keyframes pulse-bar {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 1; }
     }
 
     /* Transcript preview (slides up) */
@@ -109,68 +120,18 @@
       transform: translateX(-50%) translateY(0);
     }
 
-    /* Status indicator */
-    #status-dot {
-      position: absolute;
-      top: 2px;
-      right: 2px;
-      width: 12px;
-      height: 12px;
-      border-radius: 6px;
-      background: #10b981;
-      border: 2px solid rgba(255, 255, 255, 0.95);
-      opacity: 0;
-      transition: opacity 0.2s;
-    }
-
-    #floating-button.recording #status-dot {
-      opacity: 1;
-      background: #ef4444;
-      animation: blink 1s ease-in-out infinite;
-    }
-
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.3; }
-    }
-
-    /* Minimal tooltip */
-    #tooltip {
-      position: absolute;
-      bottom: -32px;
-      left: 50%;
-      transform: translateX(-50%);
-      white-space: nowrap;
-      background: rgba(0, 0, 0, 0.75);
-      color: #fff;
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-size: 11px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      opacity: 0;
-      transition: opacity 0.2s;
-      pointer-events: none;
-    }
-
-    #floating-button:hover #tooltip {
-      opacity: 1;
-    }
-
-    #floating-button.recording:hover #tooltip {
-      opacity: 0;
-    }
   </style>
 </head>
 <body>
   <div id="transcript-preview"></div>
 
   <div id="floating-button" class="idle">
-    <svg class="mic-icon" viewBox="0 0 24 24">
-      <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-      <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-    </svg>
-    <div id="status-dot"></div>
-    <div id="tooltip">Cmd+Shift+Space</div>
+    <div class="wave-bar"></div>
+    <div class="wave-bar"></div>
+    <div class="wave-bar"></div>
+    <div class="wave-bar"></div>
+    <div class="wave-bar"></div>
+    <div class="wave-bar"></div>
   </div>
 
   <script>
