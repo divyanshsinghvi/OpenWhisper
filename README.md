@@ -4,18 +4,32 @@ A multi-platform voice-to-text app with intelligent model routing, allowing you 
 
 ## Features
 
-- 🎙️ **System-wide voice recording** (Desktop) / **One-tap recording** (Mobile)
+### Quick Dictation Mode
+- 🎙️ **System-wide voice recording** - Press hotkey anywhere to dictate
+- 📋 **Automatic clipboard copy** - Paste transcribed text instantly
+- 🪟 **Always-on-top overlay** - Non-intrusive UI
+- ⚡ **Ultra-fast transcription** - Results in seconds
+
+### Meeting Mode 🆕
+- 🎬 **Long-form recording** - Capture hours-long meetings
+- 📝 **Live transcripts** - See transcription build in real-time
+- ⏱️ **Timestamped segments** - Jump to any part of the conversation
+- 💾 **Auto-save history** - Never lose a meeting transcript
+- 📤 **Export to Markdown/Text** - Share insights easily
+- 🔍 **Search meetings** - Find past conversations quickly
+
+### Models & Intelligence
 - 🤖 **Multiple SOTA STT models** with automatic selection:
-  - **Parakeet TDT v3** (20-110x real-time on consumer HW, 6.32% WER)
-  - **Moonshine v2** (5-44x faster than equivalent Whisper models, streaming support)
+  - **Parakeet TDT v3** (3,333x real-time with GPU, 6.32% WER)
+  - **Moonshine v2** (5-15x real-time, streaming support)
   - **Distil-Whisper** (6x faster than Whisper Large v3, excellent accuracy)
-  - Faster-Whisper, Whisper.cpp, Python Whisper
+  - Faster-Whisper, Whisper.cpp, Python Whisper, Canary Qwen
 - 🧠 **Intelligent model routing** - Auto-selects best model for your needs
-- 📋 Automatic clipboard copy
-- 🪟 Always-on-top overlay (Desktop)
-- 📱 **Native iOS (Swift + WhisperKit)** and **Android (Kotlin + TFLite)** apps
 - 🔒 **100% offline** - All processing on-device, no cloud services
-- ⚡ Ultra-fast transcription 
+
+### Platform Support
+- 📱 **Native iOS (Swift + WhisperKit)** and **Android (Kotlin + TFLite)** apps
+- 💻 **Desktop** - macOS, Windows, Linux 
 
 ## Setup
 
@@ -51,11 +65,32 @@ npm run dev
 
 ## Usage
 
-1. Press `Ctrl+Shift+Space` to activate the overlay
+### Quick Dictation (Default Mode)
+
+1. Press `Ctrl+Shift+Space` (or `Cmd+Shift+Space` on macOS) to start recording
 2. Speak your text
-3. Press `Ctrl+Shift+Space` again to stop recording
+3. Press the hotkey again to stop recording
 4. The transcribed text will be automatically copied to clipboard
-5. Paste (Ctrl+V) in any application
+5. Paste (Ctrl+V/Cmd+V) in any application
+
+### Meeting Mode 🆕
+
+1. Press `Ctrl+Shift+M` (or `Cmd+Shift+M` on macOS) to open Meeting Mode
+2. Click **"Start Meeting"** button
+3. Record your conversation (minutes to hours)
+4. Click **"Stop & Transcribe"** when done
+5. Wait for batch processing (progress bar shows status)
+6. Review transcript with timestamps
+7. Click **"Save"** or **"Export"** to save to Markdown/Text
+
+**Meeting Features:**
+- ⏱️ Real-time recording timer
+- 📊 Progress tracking during transcription
+- 🔖 Automatic timestamps for each segment
+- 💾 Auto-saved to meeting history
+- 📤 Export to Markdown, Text, or JSON
+
+See [MEETING_MODE.md](./MEETING_MODE.md) for detailed meeting mode documentation.
 
 ## Keyboard Shortcuts
 
