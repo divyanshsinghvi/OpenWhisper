@@ -43,25 +43,35 @@ export class DatasetManager {
   }
 
   private findGoogleDriveDir(home: string): string | null {
-    const cloudStorageDir = path.join(home, 'Library', 'CloudStorage');
+    // macOS-only: the modern Google Drive client mounts under ~/Library/CloudStorage.
+    if (process.platform === 'darwin') {
+      const cloudStorageDir = path.join(home, 'Library', 'CloudStorage');
+      try {
+        if (fs.existsSync(cloudStorageDir)) {
+          const googleDrive = fs.readdirSync(cloudStorageDir)
+            .find(entry => entry.startsWith('GoogleDrive'));
 
-    try {
-      if (fs.existsSync(cloudStorageDir)) {
-        const googleDrive = fs.readdirSync(cloudStorageDir)
-          .find(entry => entry.startsWith('GoogleDrive'));
-
-        if (googleDrive) {
-          const basePath = path.join(cloudStorageDir, googleDrive);
-          const myDrivePath = path.join(basePath, 'My Drive');
-          return fs.existsSync(myDrivePath) ? myDrivePath : basePath;
+          if (googleDrive) {
+            const basePath = path.join(cloudStorageDir, googleDrive);
+            const myDrivePath = path.join(basePath, 'My Drive');
+            return fs.existsSync(myDrivePath) ? myDrivePath : basePath;
+          }
         }
+      } catch (error) {
+        console.log('[WARN] Could not inspect Google Drive CloudStorage directory:', error);
       }
-    } catch (error) {
-      console.log('[WARN] Could not inspect Google Drive CloudStorage directory:', error);
     }
 
-    const legacyPath = path.join(home, 'Google Drive');
-    return fs.existsSync(legacyPath) ? legacyPath : null;
+    // Cross-platform fallbacks: classic Drive client + common Linux mount names.
+    const candidates = [
+      path.join(home, 'Google Drive'),
+      path.join(home, 'GoogleDrive'),
+      path.join(home, 'google-drive'),
+    ];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    return null;
   }
 
   /**
