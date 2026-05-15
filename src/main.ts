@@ -17,6 +17,9 @@ let transcriptionService: ModularTranscriptionService | null = null;
 let streamingModel: MoonshineStreamingModel | null = null;
 let useStreaming = false;
 let isRecording = false;
+let isTranscriptionReady = false;
+let isTogglingRecording = false;
+let lastToggleAt = 0;
 let previousWindowFocus: any = null;
 let saveButtonPositionTimer: NodeJS.Timeout | null = null;
 
@@ -180,6 +183,21 @@ function updateFloatingButtonState(state: string) {
 async function toggleRecording() {
   if (!mainWindow) return;
 
+  const now = Date.now();
+  if (isTogglingRecording || now - lastToggleAt < 750) {
+    console.log('[INFO] Ignoring duplicate transcription toggle');
+    return;
+  }
+
+  if (!isTranscriptionReady) {
+    console.log('[INFO] Transcription is still initializing; wait for the HUD to be ready');
+    updateFloatingButtonState('processing');
+    return;
+  }
+
+  isTogglingRecording = true;
+  lastToggleAt = now;
+
   if (!isRecording) {
     // Start recording - capture current window focus first
     previousWindowFocus = await captureWindowFocus();
@@ -201,6 +219,7 @@ async function toggleRecording() {
       } catch (error) {
         console.error('[ERROR] Streaming start error:', error);
         isRecording = false;
+        updateFloatingButtonState('idle');
       }
     } else {
       // Batch mode: record with sox, then transcribe
@@ -213,6 +232,7 @@ async function toggleRecording() {
       } catch (error) {
         console.error('[ERROR] Recording start error:', error);
         isRecording = false;
+        updateFloatingButtonState('idle');
       }
     }
   } else {
@@ -324,6 +344,8 @@ async function toggleRecording() {
       }
     }
   }
+
+  isTogglingRecording = false;
 }
 
 function registerShortcuts() {
@@ -370,6 +392,8 @@ app.whenReady().then(async () => {
     if (streamingAvailable) {
       await streamingModel.initialize();
       useStreaming = true;
+      isTranscriptionReady = true;
+      updateFloatingButtonState('idle');
       console.log('[OK] Moonshine v2 streaming ready - real-time transcription enabled!');
 
       // Forward partial transcription to the UI
@@ -388,15 +412,21 @@ app.whenReady().then(async () => {
     console.log('[INFO] Moonshine v2 streaming init failed, using batch mode:', error);
   }
 
-  // Also initialize batch transcription as fallback
-  console.log('[INIT] Initializing batch transcription service...');
-  transcriptionService = new ModularTranscriptionService();
+  if (!useStreaming) {
+    // Also initialize batch transcription as fallback
+    console.log('[INIT] Initializing batch transcription service...');
+    transcriptionService = new ModularTranscriptionService();
 
-  try {
-    await transcriptionService.initialize();
-    console.log('[OK] Batch transcription ready (fallback)');
-  } catch (error) {
-    console.error('[ERROR] Failed to load batch model:', error);
+    try {
+      await transcriptionService.initialize();
+      if (!isTranscriptionReady) {
+        isTranscriptionReady = true;
+        updateFloatingButtonState('idle');
+      }
+      console.log('[OK] Batch transcription ready (fallback)');
+    } catch (error) {
+      console.error('[ERROR] Failed to load batch model:', error);
+    }
   }
 
   // Signal UI that app is ready
