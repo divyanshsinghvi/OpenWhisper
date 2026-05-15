@@ -5,168 +5,263 @@
   <title>OpenWhisper</title>
   <style>
     * {
+      box-sizing: border-box;
       margin: 0;
       padding: 0;
-      box-sizing: border-box;
     }
 
+    html,
     body {
       width: 100vw;
       height: 100vh;
       overflow: hidden;
       background: transparent;
-      display: flex;
-      align-items: flex-end;
-      justify-content: center;
-      padding-bottom: 20px;
+      font-family: "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif;
+      user-select: none;
     }
 
-    /* Ultra-minimal wave indicator bar */
-    #floating-button {
-      width: 75px;
-      height: 20px;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.9);
-      border: 1px solid rgba(0, 0, 0, 0.08);
-      backdrop-filter: blur(10px);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    body {
+      display: grid;
+      place-items: center;
+      padding: 8px;
+    }
+
+    #overlay {
+      width: 156px;
+      height: 48px;
+      position: relative;
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 3px;
+      gap: 9px;
+      padding: 8px 11px 8px 9px;
+      overflow: hidden;
       cursor: pointer;
-      transition: all 0.2s ease;
-      position: relative;
-      padding: 0 8px;
+      color: #f8fafc;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 999px;
+      background:
+        radial-gradient(circle at 20% 12%, rgba(45, 212, 191, 0.32), transparent 34%),
+        linear-gradient(135deg, rgba(8, 13, 24, 0.88), rgba(14, 22, 36, 0.76));
+      box-shadow:
+        0 14px 34px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.17);
+      backdrop-filter: blur(20px) saturate(145%);
+      -webkit-backdrop-filter: blur(20px) saturate(145%);
+      transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+      -webkit-app-region: no-drag;
     }
 
-    #floating-button:hover {
-      background: rgba(255, 255, 255, 1);
-      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+    #overlay:hover {
+      transform: translateY(-1px);
+      border-color: rgba(255, 255, 255, 0.28);
+      box-shadow:
+        0 18px 42px rgba(0, 0, 0, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
     }
 
-    /* Wave bars */
-    .wave-bar {
-      width: 2px;
-      height: 6px;
-      background: #9ca3af;
-      border-radius: 1px;
-      transition: all 0.1s ease;
+    #overlay:active {
+      transform: translateY(0) scale(0.99);
     }
 
-    /* Recording state - animated waves */
-    #floating-button.recording {
-      background: rgba(239, 68, 68, 0.9);
-      border-color: rgba(220, 38, 38, 0.2);
-    }
-
-    #floating-button.recording .wave-bar {
-      background: #ffffff;
-      animation: wave 0.8s ease-in-out infinite;
-    }
-
-    #floating-button.recording .wave-bar:nth-child(1) { animation-delay: 0s; }
-    #floating-button.recording .wave-bar:nth-child(2) { animation-delay: 0.1s; }
-    #floating-button.recording .wave-bar:nth-child(3) { animation-delay: 0.2s; }
-    #floating-button.recording .wave-bar:nth-child(4) { animation-delay: 0.3s; }
-    #floating-button.recording .wave-bar:nth-child(5) { animation-delay: 0.2s; }
-    #floating-button.recording .wave-bar:nth-child(6) { animation-delay: 0.1s; }
-
-    @keyframes wave {
-      0%, 100% { height: 4px; }
-      50% { height: 14px; }
-    }
-
-    /* Processing state */
-    #floating-button.processing {
-      background: rgba(251, 146, 60, 0.9);
-      border-color: rgba(249, 115, 22, 0.2);
-    }
-
-    #floating-button.processing .wave-bar {
-      background: #ffffff;
-      animation: pulse-bar 1s ease-in-out infinite;
-    }
-
-    @keyframes pulse-bar {
-      0%, 100% { opacity: 0.4; }
-      50% { opacity: 1; }
-    }
-
-    /* Transcript preview (slides up) */
-    #transcript-preview {
+    #overlay::after {
+      content: "";
       position: absolute;
-      bottom: 60px;
-      left: 50%;
-      transform: translateX(-50%) translateY(20px);
-      min-width: 200px;
-      max-width: 400px;
-      background: rgba(255, 255, 255, 0.98);
-      backdrop-filter: blur(30px);
-      border-radius: 16px;
-      padding: 12px 16px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      inset: 0;
+      background: linear-gradient(105deg, transparent 28%, rgba(255, 255, 255, 0.16) 48%, transparent 66%);
       opacity: 0;
+      transform: translateX(-80%);
       pointer-events: none;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      font-size: 14px;
-      color: #1f2937;
-      line-height: 1.5;
     }
 
-    #transcript-preview.visible {
+    #overlay.recording::after,
+    #overlay.processing::after {
       opacity: 1;
-      transform: translateX(-50%) translateY(0);
+      animation: sheen 2s ease-in-out infinite;
     }
 
+    .orb {
+      width: 32px;
+      height: 32px;
+      flex: 0 0 32px;
+      position: relative;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: linear-gradient(145deg, #2dd4bf, #38bdf8);
+      box-shadow: 0 0 22px rgba(45, 212, 191, 0.34);
+      z-index: 1;
+    }
+
+    .drag-handle {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 46px;
+      z-index: 3;
+      cursor: grab;
+      -webkit-app-region: drag;
+    }
+
+    .drag-handle:active {
+      cursor: grabbing;
+    }
+
+    .orb::after {
+      content: "";
+      width: 10px;
+      height: 15px;
+      border: 2px solid rgba(5, 16, 26, 0.82);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.88);
+      box-shadow: 0 9px 0 -7px rgba(5, 16, 26, 0.82);
+    }
+
+    .content {
+      min-width: 0;
+      flex: 1;
+      position: relative;
+      z-index: 1;
+    }
+
+    #label {
+      margin-bottom: 4px;
+      overflow: hidden;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .waveform {
+      height: 12px;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .wave-bar {
+      width: 3px;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.76);
+      opacity: 0.46;
+      transform-origin: center;
+    }
+
+    .wave-bar:nth-child(1) { height: 5px; }
+    .wave-bar:nth-child(2) { height: 9px; }
+    .wave-bar:nth-child(3) { height: 6px; }
+    .wave-bar:nth-child(4) { height: 11px; }
+    .wave-bar:nth-child(5) { height: 7px; }
+    .wave-bar:nth-child(6) { height: 4px; }
+
+    #overlay.recording {
+      border-color: rgba(251, 113, 133, 0.48);
+      box-shadow: 0 14px 34px rgba(251, 113, 133, 0.2), 0 14px 34px rgba(0, 0, 0, 0.26);
+    }
+
+    #overlay.recording .orb {
+      background: linear-gradient(145deg, #fb7185, #f97316);
+      box-shadow: 0 0 24px rgba(251, 113, 133, 0.48);
+      animation: breathe 1.4s ease-in-out infinite;
+    }
+
+    #overlay.recording .wave-bar {
+      opacity: 1;
+      background: linear-gradient(180deg, #ffffff, #fb7185);
+      animation: listen 760ms ease-in-out infinite;
+    }
+
+    #overlay.processing {
+      border-color: rgba(251, 191, 36, 0.5);
+      box-shadow: 0 14px 34px rgba(251, 191, 36, 0.18), 0 14px 34px rgba(0, 0, 0, 0.26);
+    }
+
+    #overlay.processing .orb {
+      background: linear-gradient(145deg, #fbbf24, #fb7185);
+      box-shadow: 0 0 24px rgba(251, 191, 36, 0.4);
+    }
+
+    #overlay.processing .wave-bar {
+      opacity: 0.94;
+      background: linear-gradient(180deg, #ffffff, #fbbf24);
+      animation: process 1s ease-in-out infinite;
+    }
+
+    .wave-bar:nth-child(1) { animation-delay: 0ms; }
+    .wave-bar:nth-child(2) { animation-delay: 80ms; }
+    .wave-bar:nth-child(3) { animation-delay: 160ms; }
+    .wave-bar:nth-child(4) { animation-delay: 240ms; }
+    .wave-bar:nth-child(5) { animation-delay: 160ms; }
+    .wave-bar:nth-child(6) { animation-delay: 80ms; }
+
+    @keyframes listen {
+      0%, 100% { transform: scaleY(0.6); }
+      50% { transform: scaleY(1.55); }
+    }
+
+    @keyframes process {
+      0%, 100% { transform: scaleY(0.7); opacity: 0.42; }
+      50% { transform: scaleY(1.2); opacity: 1; }
+    }
+
+    @keyframes breathe {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+    }
+
+    @keyframes sheen {
+      0% { transform: translateX(-80%); }
+      55%, 100% { transform: translateX(80%); }
+    }
   </style>
 </head>
 <body>
-  <div id="transcript-preview"></div>
-
-  <div id="floating-button" class="idle">
-    <div class="wave-bar"></div>
-    <div class="wave-bar"></div>
-    <div class="wave-bar"></div>
-    <div class="wave-bar"></div>
-    <div class="wave-bar"></div>
-    <div class="wave-bar"></div>
+  <div id="overlay" class="idle" role="button" aria-label="Toggle OpenWhisper transcription">
+    <div class="drag-handle" aria-hidden="true"></div>
+    <div class="orb" aria-hidden="true"></div>
+    <div class="content">
+      <div id="label">Whisper</div>
+      <div class="waveform" aria-hidden="true">
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+      </div>
+    </div>
   </div>
 
   <script>
-    const button = document.getElementById('floating-button');
-    const preview = document.getElementById('transcript-preview');
+    const api = window.electronAPI || window.electron;
+    const overlay = document.getElementById('overlay');
+    const label = document.getElementById('label');
+    const labels = {
+      idle: 'Whisper',
+      recording: 'Listening',
+      processing: 'Writing...'
+    };
 
-    // Click to toggle recording
-    button.addEventListener('click', () => {
-      if (window.electron) {
-        window.electron.send('floating-button-click');
+    function setState(state) {
+      const safeState = labels[state] ? state : 'idle';
+      overlay.className = safeState;
+      label.textContent = labels[safeState];
+    }
+
+    overlay.addEventListener('click', () => {
+      if (api) {
+        api.send('floating-button-click');
       }
     });
 
-    // Listen for state updates
-    if (window.electron) {
-      window.electron.on('floating-button-state', ({ state }) => {
-        button.className = state;
-
-        // Hide preview when not recording
-        if (state !== 'recording' && state !== 'processing') {
-          preview.classList.remove('visible');
-        }
+    if (api) {
+      api.on('floating-button-state', ({ state }) => {
+        setState(state);
       });
 
-      window.electron.on('transcript-update', ({ text }) => {
-        if (text && text.trim()) {
-          preview.textContent = text;
-          preview.classList.add('visible');
-
-          // Auto-hide after 3 seconds
-          setTimeout(() => {
-            preview.classList.remove('visible');
-          }, 3000);
-        }
-      });
+      api.send('floating-button-ready');
     }
   </script>
 </body>

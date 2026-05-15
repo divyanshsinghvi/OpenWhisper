@@ -18,6 +18,7 @@ let streamingModel: MoonshineStreamingModel | null = null;
 let useStreaming = false;
 let isRecording = false;
 let previousWindowFocus: any = null;
+let saveButtonPositionTimer: NodeJS.Timeout | null = null;
 
 /**
  * Capture the currently focused window so we can restore focus later
@@ -76,8 +77,8 @@ function loadButtonPosition(): ButtonPosition {
   // Default position: bottom-right
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   return {
-    x: width - 100,
-    y: height - 100
+    x: width - 212,
+    y: height - 104
   };
 }
 
@@ -125,8 +126,8 @@ function createFloatingButtonWindow() {
   const position = loadButtonPosition();
 
   floatingButtonWindow = new BrowserWindow({
-    width: 60,
-    height: 60,
+    width: 172,
+    height: 64,
     x: position.x,
     y: position.y,
     transparent: true,
@@ -147,6 +148,21 @@ function createFloatingButtonWindow() {
   // Handle window closed
   floatingButtonWindow.on('closed', () => {
     floatingButtonWindow = null;
+  });
+
+  floatingButtonWindow.on('move', () => {
+    if (!floatingButtonWindow || floatingButtonWindow.isDestroyed()) return;
+
+    if (saveButtonPositionTimer) {
+      clearTimeout(saveButtonPositionTimer);
+    }
+
+    saveButtonPositionTimer = setTimeout(() => {
+      if (!floatingButtonWindow || floatingButtonWindow.isDestroyed()) return;
+
+      const [x, y] = floatingButtonWindow.getPosition();
+      saveButtonPosition({ x, y });
+    }, 250);
   });
 
   // Send initial state
