@@ -17,6 +17,7 @@ const execAsync = promisify(exec);
 export class MoonshineModel extends STTModel {
   private scriptPath: string;
   private modelVariant: 'tiny' | 'base';
+  private pythonCmd: string = 'python3';  // Default, will be updated on detection
 
   constructor(modelVariant: 'tiny' | 'base' = 'tiny') {
     super('moonshine', undefined);
@@ -24,9 +25,39 @@ export class MoonshineModel extends STTModel {
     this.scriptPath = path.join(__dirname, 'moonshine_transcribe.py');
   }
 
+  /**
+   * Find the correct Python executable (venv or system)
+   */
+  private async findPython(): Promise<string> {
+    const pythonCommands = [
+      '.venv/bin/python3',  // Local venv (preferred)
+      'python3',            // System Python
+      'python',             // Fallback
+    ];
+
+    for (const cmd of pythonCommands) {
+      try {
+        await execAsync(`${cmd} -c "import moonshine"`);
+        return cmd;
+      } catch {
+        continue;
+      }
+    }
+
+    return 'python3'; // Fallback
+  }
+
   async isAvailable(): Promise<boolean> {
+    const python = await this.findPython();
+    if (python !== 'python3') {
+      this.pythonCmd = python;
+      console.log(`[Moonshine] Found using: ${python}`);
+      return true;
+    }
+
+    // If findPython returned default, check if it actually has moonshine
     try {
-      await execAsync('python3 -c "import moonshine"');
+      await execAsync(`${python} -c "import moonshine"`);
       return true;
     } catch {
       return false;
@@ -34,7 +65,9 @@ export class MoonshineModel extends STTModel {
   }
 
   async initialize(): Promise<void> {
-    // Model is loaded on-demand by the Python script
+    // Ensure we have the correct Python command
+    this.pythonCmd = await this.findPython();
+    console.log(`[Moonshine] Using Python: ${this.pythonCmd}`);
   }
 
   async transcribe(
@@ -48,8 +81,9 @@ export class MoonshineModel extends STTModel {
       this.createTranscriptionScript();
     }
 
+    // Use the detected Python command (venv or system)
     const { stdout } = await execAsync(
-      `python3 ${this.scriptPath} "${audioFilePath}" ${this.modelVariant}`
+      `${this.pythonCmd} ${this.scriptPath} "${audioFilePath}" ${this.modelVariant}`
     );
 
     const duration = Date.now() - startTime;

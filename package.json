@@ -31,14 +31,57 @@
     "node-record-lpcm16": "^1.0.1"
   },
   "build": {
-    "appId": "com.listen.app",
-    "productName": "Listen",
+    "appId": "com.openwhisper.app",
+    "productName": "OpenWhisper",
+    "publish": null,
     "files": [
       "dist/**/*",
-      "assets/**/*"
+      "assets/**/*",
+      "package.json"
     ],
     "directories": {
       "output": "release"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "title": "OpenWhisper ${version}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
     }
   }
 }
