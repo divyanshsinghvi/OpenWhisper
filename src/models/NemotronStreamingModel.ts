@@ -50,7 +50,7 @@ export class NemotronStreamingModel extends EventEmitter {
 
     this.readyPromise = new Promise<void>((resolve, reject) => {
       const { spawn } = require('child_process');
-      const serverScript = path.join(__dirname, '..', '..', 'nemotron_streaming_server.py');
+      const serverScript = path.join(__dirname, '..', '..', 'python', 'nemotron_streaming_server.py');
       const mplConfigDir = path.join(__dirname, '..', '..', 'temp', 'matplotlib');
       fs.mkdirSync(mplConfigDir, { recursive: true });
 

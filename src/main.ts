@@ -45,7 +45,7 @@ function getActiveStreamingModel(): MoonshineStreamingModel | NemotronStreamingM
  */
 async function captureWindowFocus(): Promise<any> {
   try {
-    const { stdout } = await execAsync('python3 ' + path.join(__dirname, '..', 'window_focus.py') + ' get');
+    const { stdout } = await execAsync('python3 ' + path.join(__dirname, '..', 'python', 'window_focus.py') + ' get');
     const windowInfo = JSON.parse(stdout.trim());
     if (windowInfo.handle) {
       console.log(`[OK] Captured focus: ${windowInfo.title || 'Unknown'}`);
@@ -64,7 +64,7 @@ async function restoreWindowFocus(windowInfo: any): Promise<boolean> {
   if (!windowInfo || !windowInfo.handle) return false;
 
   try {
-    const { stdout } = await execAsync(`python3 ${path.join(__dirname, '..', 'window_focus.py')} restore '${JSON.stringify(windowInfo).replace(/'/g, "'\\''")}'`);
+    const { stdout } = await execAsync(`python3 ${path.join(__dirname, '..', 'python', 'window_focus.py')} restore '${JSON.stringify(windowInfo).replace(/'/g, "'\\''")}'`);
     const result = JSON.parse(stdout.trim());
     if (result.success) {
       console.log(`[OK] Restored focus to: ${windowInfo.title || 'previous window'}`);

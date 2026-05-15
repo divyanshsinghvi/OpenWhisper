@@ -40,7 +40,7 @@ export class MoonshineStreamingModel extends EventEmitter {
 
     this.readyPromise = new Promise<void>((resolve, reject) => {
       const { spawn } = require('child_process');
-      const serverScript = path.join(__dirname, '..', '..', 'moonshine_streaming_server.py');
+      const serverScript = path.join(__dirname, '..', '..', 'python', 'moonshine_streaming_server.py');
 
       this.serverProcess = spawn('python3', [serverScript], {
         stdio: ['pipe', 'pipe', 'pipe'],

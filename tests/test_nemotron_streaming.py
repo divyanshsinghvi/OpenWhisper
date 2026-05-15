@@ -21,12 +21,13 @@ import numpy as np
 import soundfile as sf
 import sherpa_onnx
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
 MODEL_DIR = Path(os.environ.get(
     "NEMOTRON_MODEL_DIR",
-    "/Users/rashmi/code/OpenWhisper/models/nemotron-streaming-en-0.6b-int8",
+    REPO_ROOT / "models" / "nemotron-streaming-en-0.6b-int8",
 ))
 SAMPLE_PATH = Path(sys.argv[1] if len(sys.argv) > 1
-                   else "/Users/rashmi/code/OpenWhisper/temp/recording_1778839201504.wav")
+                   else MODEL_DIR / "test_wavs" / "0.wav")
 CHUNK_MS = int(os.environ.get("CHUNK_MS", "100"))
 SAMPLE_RATE = 16000
 

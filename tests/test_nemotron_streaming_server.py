@@ -25,8 +25,8 @@ import threading
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-SERVER_SCRIPT = ROOT / "nemotron_streaming_server.py"
+ROOT = Path(__file__).resolve().parent.parent
+SERVER_SCRIPT = ROOT / "python" / "nemotron_streaming_server.py"
 MODEL_DIR = ROOT / "models" / "nemotron-streaming-en-0.6b-int8"
 FAKE_WAV = MODEL_DIR / "test_wavs" / "0.wav"
 EXPECTED_PHRASE = "after early"  # first words of bundled wav 0
