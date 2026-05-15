@@ -27,13 +27,26 @@ jobs:
       - name: Build TypeScript
         run: npm run build
 
+      - name: Verify build output
+        run: |
+          echo "Checking dist directory..."
+          ls -la dist/ || echo "dist directory not found!"
+          echo "Checking assets directory..."
+          ls -la assets/ || echo "assets directory not found!"
+
       - name: Build macOS DMG
         run: npm run package
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false  # Disable code signing (not needed for testing)
+          CSC_IDENTITY_AUTO_DISCOVERY: false  # Disable code signing
+          DEBUG: electron-builder
 
       - name: List build artifacts
-        run: ls -la release/
+        run: |
+          echo "Contents of release directory:"
+          ls -la release/ || echo "release directory not found!"
+          echo ""
+          echo "All DMG files:"
+          find . -name "*.dmg" -type f
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
