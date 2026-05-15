@@ -35,7 +35,7 @@ jobs:
           ls -la assets/ || echo "assets directory not found!"
 
       - name: Build macOS DMG
-        run: npm run package
+        run: npm run package -- --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false  # Disable code signing
           DEBUG: electron-builder

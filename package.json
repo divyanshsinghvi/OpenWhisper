@@ -33,6 +33,7 @@
   "build": {
     "appId": "com.openwhisper.app",
     "productName": "OpenWhisper",
+    "publish": null,
     "files": [
       "dist/**/*",
       "assets/**/*",
