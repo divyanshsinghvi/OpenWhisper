@@ -6,7 +6,6 @@ import { promisify } from 'util';
 import { RecordingManager } from './recording';
 import { ModularTranscriptionService } from './transcription-router';
 import { MoonshineStreamingModel, StreamingEvent } from './models/MoonshineStreamingModel';
-import { ParakeetStreamingModel, ParakeetStreamingEvent } from './models/ParakeetStreamingModel';
 import { NemotronStreamingModel, NemotronStreamingEvent } from './models/NemotronStreamingModel';
 import { DatasetManager } from './dataset';
 import { SettingsManager } from './settings';
@@ -20,7 +19,6 @@ let recordingManager: RecordingManager | null = null;
 let trainingRecordingManager: RecordingManager | null = null;
 let transcriptionService: ModularTranscriptionService | null = null;
 let streamingModel: MoonshineStreamingModel | null = null;
-let parakeetStreamingModel: ParakeetStreamingModel | null = null;
 let nemotronStreamingModel: NemotronStreamingModel | null = null;
 let useStreaming = false;
 let isRecording = false;
@@ -38,8 +36,8 @@ function getDatasetManager(): DatasetManager {
   return new DatasetManager(settings.datasetDirectory || undefined);
 }
 
-function getActiveStreamingModel(): MoonshineStreamingModel | ParakeetStreamingModel | NemotronStreamingModel | null {
-  return nemotronStreamingModel || parakeetStreamingModel || streamingModel;
+function getActiveStreamingModel(): MoonshineStreamingModel | NemotronStreamingModel | null {
+  return nemotronStreamingModel || streamingModel;
 }
 
 /**
@@ -382,11 +380,7 @@ async function toggleRecording() {
             await getDatasetManager().saveEntry(trainingAudioPath, {
               transcription: finalText,
               confidence: 0.95,
-              model: nemotronStreamingModel
-                ? 'Nemotron streaming'
-                : parakeetStreamingModel
-                  ? 'Parakeet Unified streaming'
-                  : 'Moonshine v2 streaming',
+              model: nemotronStreamingModel ? 'Nemotron streaming' : 'Moonshine v2 streaming',
               language: 'en',
               duration: recordingDuration,
               fileSize,
@@ -430,9 +424,6 @@ async function toggleRecording() {
 
         const transcribeStart = Date.now();
         const result = await transcriptionService.transcribe(audioFilePath, {
-          transcriptionOptions: {
-            model: settingsManager.get().parakeetModelName,
-          },
           routingPreferences: {
             priority: 'accuracy',
             platform: 'desktop',
@@ -521,13 +512,9 @@ app.whenReady().then(async () => {
     || settings.transcriptionEngine
     || 'auto';
   const shouldUseNemotronStreaming = transcriptionEngine === 'nemotron-streaming';
-  const shouldUseParakeetStreaming = transcriptionEngine === 'parakeet-streaming';
-  const shouldUseMoonshineStreaming =
-    !shouldUseNemotronStreaming
-    && !shouldUseParakeetStreaming
-    && transcriptionEngine !== 'parakeet';
+  const shouldUseMoonshineStreaming = !shouldUseNemotronStreaming;
 
-  // Try streaming (Moonshine v2) first, fall back to batch transcription
+  // Nemotron is the recommended streaming engine; Moonshine is the fallback.
   if (shouldUseNemotronStreaming) {
     console.log('[INIT] Checking for Nemotron streaming...');
     nemotronStreamingModel = new NemotronStreamingModel();
@@ -558,37 +545,6 @@ app.whenReady().then(async () => {
       }
     } catch (error) {
       console.log('[INFO] Nemotron streaming init failed:', error);
-    }
-  } else if (shouldUseParakeetStreaming) {
-    console.log('[INIT] Checking for Parakeet Unified streaming...');
-    parakeetStreamingModel = new ParakeetStreamingModel();
-
-    try {
-      const streamingAvailable = await parakeetStreamingModel.isAvailable();
-      if (streamingAvailable) {
-        await parakeetStreamingModel.initialize();
-        useStreaming = true;
-        isTranscriptionReady = true;
-        updateFloatingButtonState('idle');
-        console.log('[OK] Parakeet Unified streaming ready');
-
-        parakeetStreamingModel.on('transcription', (event: ParakeetStreamingEvent) => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('streaming-text', {
-              type: event.type,
-              text: event.text,
-            });
-          }
-
-          if (isRecording && (event.type === 'partial' || event.type === 'final')) {
-            queueLiveTextChange(parakeetStreamingModel?.getFullText() || event.text);
-          }
-        });
-      } else {
-        console.log('[INFO] Parakeet streaming not available, using batch mode');
-      }
-    } catch (error) {
-      console.log('[INFO] Parakeet streaming init failed, using batch mode:', error);
     }
   } else if (shouldUseMoonshineStreaming) {
     console.log('[INIT] Checking for Moonshine v2 streaming...');
@@ -664,7 +620,6 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   streamingModel?.cleanup();
-  parakeetStreamingModel?.cleanup();
   nemotronStreamingModel?.cleanup();
   if (floatingButtonWindow && !floatingButtonWindow.isDestroyed()) {
     floatingButtonWindow.destroy();

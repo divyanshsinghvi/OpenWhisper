@@ -30,8 +30,7 @@ export interface ListenSettings {
 
   // Model
   preferredModel: string | 'auto';
-  transcriptionEngine: 'moonshine-streaming' | 'parakeet-streaming' | 'parakeet' | 'auto';
-  parakeetModelName: string;
+  transcriptionEngine: 'moonshine-streaming' | 'nemotron-streaming' | 'auto';
   modelPriority: 'speed' | 'accuracy' | 'balance';
   enableStreaming: boolean;
 
@@ -96,7 +95,6 @@ export class SettingsManager {
       // Model
       preferredModel: 'auto',
       transcriptionEngine: 'auto',
-      parakeetModelName: 'nvidia/parakeet-tdt-0.6b-v3',
       modelPriority: 'balance',
       enableStreaming: false,
 
