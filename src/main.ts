@@ -156,6 +156,33 @@ if payload['text']:
   liveTypedText = normalizedText;
 }
 
+// Recognize a trailing voice command like "...send", "...enter", "...new line".
+// Returns the cleaned text + the action to fire after typing it.
+const VOICE_ACTION_RE = /[\s,]*\b(enter|return|new\s*line|submit|send)\b[.!?]?\s*$/i;
+type VoiceAction = 'enter' | null;
+function extractTrailingAction(text: string): { cleaned: string; action: VoiceAction } {
+  const match = text.match(VOICE_ACTION_RE);
+  if (!match) return { cleaned: text, action: null };
+  return { cleaned: text.slice(0, match.index).trimEnd(), action: 'enter' };
+}
+
+async function pressEnter(): Promise<void> {
+  if (process.platform === 'darwin') {
+    await execFileAsync('osascript', [
+      '-e', 'tell application "System Events" to key code 36',
+    ]);
+    return;
+  }
+  await new Promise<void>((resolve, reject) => {
+    const child = require('child_process').spawn('python3', [
+      '-c', "import pyautogui; pyautogui.press('enter')",
+    ]);
+    child.on('error', reject);
+    child.on('exit', (code: number) =>
+      code === 0 ? resolve() : reject(new Error(`pyautogui enter exited ${code}`)));
+  });
+}
+
 function queueLiveTextChange(nextText: string): void {
   liveTypeQueue = liveTypeQueue
     .then(() => applyLiveTextChange(nextText))
@@ -371,20 +398,33 @@ async function toggleRecording() {
         const finalText = await activeStreamingModel.stopStreaming();
         await liveTypeQueue;
 
+        const { cleaned: typedText, action } = extractTrailingAction(finalText);
+
         const engineLabel = nemotronStreamingModel ? 'Nemotron streaming' : 'Moonshine v2 streaming';
         console.log(`[RESULTS] STREAMING TRANSCRIPTION RESULTS:`);
         console.log(`  [OK] Text: "${finalText}"`);
+        if (action) console.log(`  [OK] Voice action: ${action} (typed: "${typedText}")`);
         console.log(`  [OK] Model: ${engineLabel}`);
 
-        clipboard.writeText(finalText);
+        clipboard.writeText(typedText);
         console.log(`  [OK] Text copied to clipboard`);
 
         updateFloatingButtonState('idle');
         mainWindow?.hide();
 
-        if (finalText.trim() && finalText.trim() !== liveTypedText.trim()) {
-          queueLiveTextChange(finalText);
+        if (typedText.trim() !== liveTypedText.trim()) {
+          // Converge typed text to the cleaned version (backspaces the trigger word).
+          queueLiveTextChange(typedText);
           await liveTypeQueue;
+        }
+
+        if (action === 'enter') {
+          try {
+            await pressEnter();
+            console.log(`  [OK] Voice-triggered Enter`);
+          } catch (e) {
+            console.log(`  [WARN] Enter keystroke failed: ${e instanceof Error ? e.message : e}`);
+          }
         }
 
         console.log(`[DONE] PIPELINE COMPLETE - Total time: ${Date.now() - pipelineStart}ms`);
