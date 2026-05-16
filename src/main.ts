@@ -9,6 +9,8 @@ import { MoonshineStreamingModel, StreamingEvent } from './models/MoonshineStrea
 import { NemotronStreamingModel, NemotronStreamingEvent } from './models/NemotronStreamingModel';
 import { SettingsManager } from './settings';
 import { TrayManager } from './tray';
+import { extractTrailingAction } from './voice-actions';
+import { fireKeystroke } from './keystroke';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -156,36 +158,6 @@ if payload['text']:
   }
 
   liveTypedText = normalizedText;
-}
-
-// Recognize a trailing voice command like "...send", "...enter", "...new line".
-// Returns the cleaned text + the action to fire after typing it.
-// Mid-stream voice command. We require an explicit "press X" prefix so that
-// natural speech like "I'll enter the room" doesn't accidentally fire Enter.
-// Tolerates leading punctuation/whitespace and a trailing period.
-const VOICE_ACTION_RE = /[\s,.!?:;]*\bpress\s+(enter|return|new\s*line|submit|send)\b[.!?]?\s*$/i;
-type VoiceAction = 'enter' | null;
-function extractTrailingAction(text: string): { cleaned: string; action: VoiceAction } {
-  const match = text.match(VOICE_ACTION_RE);
-  if (!match) return { cleaned: text, action: null };
-  return { cleaned: text.slice(0, match.index).trimEnd(), action: 'enter' };
-}
-
-async function pressEnter(): Promise<void> {
-  if (process.platform === 'darwin') {
-    await execFileAsync('osascript', [
-      '-e', 'tell application "System Events" to key code 36',
-    ]);
-    return;
-  }
-  await new Promise<void>((resolve, reject) => {
-    const child = require('child_process').spawn('python3', [
-      '-c', "import pyautogui; pyautogui.press('enter')",
-    ]);
-    child.on('error', reject);
-    child.on('exit', (code: number) =>
-      code === 0 ? resolve() : reject(new Error(`pyautogui enter exited ${code}`)));
-  });
 }
 
 function queueLiveTextChange(nextText: string): void {
@@ -613,18 +585,18 @@ app.whenReady().then(async () => {
 
           if (voiceActionFiring) return;
 
-          const { cleaned, action } = extractTrailingAction(fullText);
-          if (action === 'enter') {
+          const { cleaned, action, name } = extractTrailingAction(fullText);
+          if (action) {
             voiceActionFiring = true;
             try {
               queueLiveTextChange(cleaned);
               await liveTypeQueue;
-              await pressEnter();
-              console.log(`[voice-cmd] press enter -> cleaned="${cleaned}"`);
-              // Reset diff state: typed text was just Enter'd, cursor is on a
-              // new line, and the recognizer is about to restart fresh. The
-              // next partial begins a new utterance, no longer relative to
-              // what we already committed.
+              await fireKeystroke(action);
+              console.log(`[voice-cmd] ${name} -> cleaned="${cleaned}"`);
+              // Reset diff state: the typed prefix is committed, the cursor
+              // moved (Return / Tab / arrow / etc.), and the recognizer is
+              // about to restart fresh. The next partial begins a new
+              // utterance, no longer relative to what we already committed.
               liveTypedText = '';
               nemotronStreamingModel?.commitAndResetSession(cleaned);
             } catch (e) {
