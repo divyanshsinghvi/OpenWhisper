@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, clipboard, screen } from 'electron';
+import { app, BrowserWindow, globalShortcut, ipcMain, clipboard, screen, systemPreferences } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { exec, execFile } from 'child_process';
@@ -158,7 +158,10 @@ if payload['text']:
 
 // Recognize a trailing voice command like "...send", "...enter", "...new line".
 // Returns the cleaned text + the action to fire after typing it.
-const VOICE_ACTION_RE = /[\s,]*\b(enter|return|new\s*line|submit|send)\b[.!?]?\s*$/i;
+// Mid-stream voice command. We require an explicit "press X" prefix so that
+// natural speech like "I'll enter the room" doesn't accidentally fire Enter.
+// Tolerates leading punctuation/whitespace and a trailing period.
+const VOICE_ACTION_RE = /[\s,.!?:;]*\bpress\s+(enter|return|new\s*line|submit|send)\b[.!?]?\s*$/i;
 type VoiceAction = 'enter' | null;
 function extractTrailingAction(text: string): { cleaned: string; action: VoiceAction } {
   const match = text.match(VOICE_ACTION_RE);
@@ -398,33 +401,20 @@ async function toggleRecording() {
         const finalText = await activeStreamingModel.stopStreaming();
         await liveTypeQueue;
 
-        const { cleaned: typedText, action } = extractTrailingAction(finalText);
-
         const engineLabel = nemotronStreamingModel ? 'Nemotron streaming' : 'Moonshine v2 streaming';
         console.log(`[RESULTS] STREAMING TRANSCRIPTION RESULTS:`);
         console.log(`  [OK] Text: "${finalText}"`);
-        if (action) console.log(`  [OK] Voice action: ${action} (typed: "${typedText}")`);
         console.log(`  [OK] Model: ${engineLabel}`);
 
-        clipboard.writeText(typedText);
+        clipboard.writeText(finalText);
         console.log(`  [OK] Text copied to clipboard`);
 
         updateFloatingButtonState('idle');
         mainWindow?.hide();
 
-        if (typedText.trim() !== liveTypedText.trim()) {
-          // Converge typed text to the cleaned version (backspaces the trigger word).
-          queueLiveTextChange(typedText);
+        if (finalText.trim() && finalText.trim() !== liveTypedText.trim()) {
+          queueLiveTextChange(finalText);
           await liveTypeQueue;
-        }
-
-        if (action === 'enter') {
-          try {
-            await pressEnter();
-            console.log(`  [OK] Voice-triggered Enter`);
-          } catch (e) {
-            console.log(`  [WARN] Enter keystroke failed: ${e instanceof Error ? e.message : e}`);
-          }
         }
 
         console.log(`[DONE] PIPELINE COMPLETE - Total time: ${Date.now() - pipelineStart}ms`);
@@ -544,10 +534,37 @@ function applyAutoStart(enabled: boolean): void {
   }
 }
 
+function checkAccessibilityPermission(): void {
+  if (process.platform !== 'darwin') return;
+  // Passing `false` only queries — no prompt. We then call the prompting form
+  // exactly once if denied, which surfaces the system "open Settings" alert.
+  const granted = systemPreferences.isTrustedAccessibilityClient(false);
+  if (granted) {
+    console.log('[OK] macOS Accessibility permission: GRANTED');
+    return;
+  }
+  console.log('');
+  console.log('=' .repeat(72));
+  console.log('[!] macOS Accessibility permission: NOT GRANTED');
+  console.log('[!] Voice-typing and the Enter voice command will silently fail');
+  console.log('[!] until Electron is added to: System Settings → Privacy &');
+  console.log('[!] Security → Accessibility. Paste this path in the "+" picker');
+  console.log('[!] (Cmd+Shift+G):');
+  console.log('[!]');
+  console.log(`[!]   ${process.execPath.replace(/\/Contents\/MacOS\/Electron$/, '')}`);
+  console.log('[!]');
+  console.log('[!] After granting, fully quit (Cmd+Q from tray) and restart.');
+  console.log('=' .repeat(72));
+  console.log('');
+  // Show macOS system prompt as well.
+  systemPreferences.isTrustedAccessibilityClient(true);
+}
+
 app.whenReady().then(async () => {
   createWindow();
   createFloatingButtonWindow();
   registerShortcuts();
+  checkAccessibilityPermission();
 
   trayManager = new TrayManager({
     toggleRecording: () => { void toggleRecording(); },
@@ -578,7 +595,8 @@ app.whenReady().then(async () => {
         updateFloatingButtonState('idle');
         console.log('[OK] Nemotron streaming ready');
 
-        nemotronStreamingModel.on('transcription', (event: NemotronStreamingEvent) => {
+        let voiceActionFiring = false;
+        nemotronStreamingModel.on('transcription', async (event: NemotronStreamingEvent) => {
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('streaming-text', {
               type: event.type,
@@ -586,9 +604,36 @@ app.whenReady().then(async () => {
             });
           }
 
-          if (isRecording && (event.type === 'partial' || event.type === 'final')) {
-            queueLiveTextChange(nemotronStreamingModel?.getFullText() || event.text);
+          if (!isRecording) return;
+          if (event.type !== 'partial' && event.type !== 'final') return;
+
+          const fullText = nemotronStreamingModel?.getFullText() || event.text;
+
+          if (voiceActionFiring) return;
+
+          const { cleaned, action } = extractTrailingAction(fullText);
+          if (action === 'enter') {
+            voiceActionFiring = true;
+            try {
+              queueLiveTextChange(cleaned);
+              await liveTypeQueue;
+              await pressEnter();
+              console.log(`[voice-cmd] press enter -> cleaned="${cleaned}"`);
+              // Reset diff state: typed text was just Enter'd, cursor is on a
+              // new line, and the recognizer is about to restart fresh. The
+              // next partial begins a new utterance, no longer relative to
+              // what we already committed.
+              liveTypedText = '';
+              nemotronStreamingModel?.commitAndResetSession(cleaned);
+            } catch (e) {
+              console.log(`[voice-cmd] failed: ${e instanceof Error ? e.message : e}`);
+            } finally {
+              voiceActionFiring = false;
+            }
+            return;
           }
+
+          queueLiveTextChange(fullText);
         });
       } else {
         console.log('[INFO] Nemotron streaming not available (sherpa-onnx or model files missing)');

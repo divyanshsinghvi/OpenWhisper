@@ -272,7 +272,8 @@ class NemotronStreamingServer:
             if not line:
                 break
             try:
-                command = json.loads(line.strip()).get("command")
+                payload = json.loads(line.strip())
+                command = payload.get("command")
             except Exception as error:
                 emit({"error": str(error)})
                 continue
@@ -281,6 +282,16 @@ class NemotronStreamingServer:
                 self.start()
             elif command == "stop":
                 self.stop()
+            elif command == "commit_and_reset":
+                # Mid-stream voice-action commit. The host already typed the
+                # cleaned text and fired Enter; from the recognizer's POV the
+                # utterance is done. Clear ALL accumulated state and reset the
+                # recognizer so the next partial starts fresh.
+                self.committed_finals = []
+                self.last_partial = ""
+                if self.recognizer and self.stream:
+                    self.recognizer.reset(self.stream)
+                emit({"type": "partial", "text": "", "time": time.time()})
             elif command == "quit":
                 self.stop()
                 break

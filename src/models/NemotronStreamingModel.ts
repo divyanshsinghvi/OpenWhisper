@@ -141,6 +141,16 @@ export class NemotronStreamingModel extends EventEmitter {
     this.sendCommand({ command: 'start' });
   }
 
+  /**
+   * Lock in the cleaned text as a committed final and reset the recognizer
+   * mid-utterance. Used after the host fires a voice action like "press enter".
+   */
+  commitAndResetSession(text: string): void {
+    this.finalText = '';
+    this.currentPartial = '';
+    this.sendCommand({ command: 'commit_and_reset', text });
+  }
+
   async stopStreaming(): Promise<string> {
     return new Promise((resolve) => {
       this.once('stopped', (text: string) => {
