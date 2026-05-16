@@ -7,12 +7,6 @@
 
 import { STTModel, ModelInfo, TranscriptionOptions, TranscriptionResult } from './ModelInterface';
 import { MoonshineModel } from './MoonshineModel';
-import { DistilWhisperModel } from './DistilWhisperModel';
-import { WhisperCppModel } from './WhisperCppModel';
-import { FasterWhisperModel } from './FasterWhisperModel';
-import { PythonWhisperModel } from './PythonWhisperModel';
-import { ParakeetModel } from './ParakeetModel';
-import { CanaryModel } from './CanaryModel';
 
 export interface RoutingPreferences {
   priority: 'speed' | 'accuracy' | 'balance';
@@ -28,21 +22,11 @@ export class ModelRouter {
   private initialized: boolean = false;
 
   constructor() {
-    // Register models in priority order (SMALLEST & FASTEST FIRST)
-    // First available model will be used, others skipped
+    // Batch transcription path uses Moonshine only (the streaming engines —
+    // Nemotron, Moonshine streaming — are wired separately in main.ts).
     this.models = [
-      // SMALL & FAST MODELS (Practical for desktop)
-      new MoonshineModel('base'),      // ~200M - 5-15x real-time (BEST BALANCE)
-      new MoonshineModel('tiny'),      // ~40M - ultra lightweight
-      new DistilWhisperModel('small'), // ~244M - 6x real-time (Best accuracy for size)
-      new FasterWhisperModel('base'),  // ~74M - 4x real-time
-      new WhisperCppModel('base'),     // ~74M - 2x real-time
-      new PythonWhisperModel('base'),  // ~74M - baseline
-
-      // LARGE MODELS (Only use if specifically needed)
-      // new ParakeetModel('v3'),      // 0.6B - 3,333x real-time (TOO LARGE)
-      // new CanaryModel(),            // 2.5B - 418x real-time (TOO LARGE)
-      // new DistilWhisperModel('medium'), // ~750M - slower (TOO LARGE)
+      new MoonshineModel('base'),
+      new MoonshineModel('tiny'),
     ];
   }
 
@@ -167,12 +151,9 @@ export class ModelRouter {
         break;
     }
 
-    // Platform-specific bonuses
+    // Platform-specific bonus
     if (prefs.platform === 'mobile' && info.type === 'moonshine') {
       score += 20; // Moonshine optimized for mobile
-    }
-    if (prefs.platform === 'desktop' && info.type === 'distil-whisper' && prefs.language === 'en') {
-      score += 20; // Distil-Whisper excellent for desktop English
     }
 
     // English-only penalty for non-English requests

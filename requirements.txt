@@ -1,28 +1,16 @@
-# Listen - Python Dependencies
+# Python dependencies for the streaming engines and helper scripts.
 # Install with: pip install -r requirements.txt
+# (or use ./install-nemotron.sh which also downloads the ONNX model bundle.)
 
-# Core Audio Processing
-PyAudioWPatch>=0.2.12  # Windows audio recording with WASAPI support
-pyaudio>=0.2.13       # Cross-platform audio I/O (fallback for non-Windows)
-sounddevice>=0.4.6    # Audio recording alternative
-soundfile>=0.12.1     # WAV file writing
+# Nemotron streaming engine (default)
+sherpa-onnx>=1.13          # ONNX streaming recognizer
+sounddevice>=0.4.6         # Microphone capture (cross-platform)
+soundfile>=0.12.1          # WAV I/O (used by fake-mic test mode)
+numpy>=1.24                # Audio buffers
+huggingface_hub>=0.20      # Model download in install-nemotron.sh
 
-# Speech-to-Text Models
-nemo-toolkit[asr]>=2.0.0  # NVIDIA NeMo ASR (includes Parakeet)
-torch>=2.9.0               # PyTorch (auto-installs with CUDA support)
-torchaudio>=2.9.0          # PyTorch audio utilities
-transformers>=4.30.0       # HuggingFace transformers (for Distil-Whisper, Canary)
+# Moonshine streaming engine (fallback)
+moonshine-voice            # Streaming Moonshine v2 SDK
 
-# Keyboard & Input Simulation
-pyautogui>=0.9.54     # Cross-platform keyboard/mouse simulation
-
-# Data Processing
-numpy>=1.24.0         # Numerical computing
-scipy>=1.10.0         # Scientific computing
-
-# Utilities
-python-dotenv>=1.0.0  # Environment variable management
-
-# Optional: Additional STT Models
-# faster-whisper>=0.10.0  # Fast Whisper implementation
-# moonshine>=0.1.0         # Lightweight STT model
+# Windows-only audio fallback
+PyAudioWPatch>=0.2.12; sys_platform == "win32"

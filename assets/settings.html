@@ -1,507 +1,223 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Listen Settings</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
+    :root {
+      color-scheme: light dark;
+      --bg: #f4f4f5;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #2563eb;
+      --accent-text: #ffffff;
     }
 
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #18181b;
+        --card: #27272a;
+        --text: #f4f4f5;
+        --muted: #a1a1aa;
+        --border: #3f3f46;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-      background: #f5f5f5;
-      padding: 20px;
+      margin: 0;
+      padding: 28px;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.5;
     }
 
     .container {
-      max-width: 800px;
+      max-width: 520px;
       margin: 0 auto;
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      background: var(--card);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      overflow: hidden;
     }
 
-    .header {
-      padding: 24px;
-      border-bottom: 1px solid #eee;
+    header {
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--border);
     }
-
-    .header h1 {
-      font-size: 24px;
-      color: #333;
-    }
-
-    .tabs {
-      display: flex;
-      border-bottom: 1px solid #eee;
-      padding: 0 24px;
-    }
-
-    .tab {
-      padding: 12px 20px;
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      transition: all 0.2s;
-      color: #666;
-    }
-
-    .tab:hover {
-      color: #333;
-    }
-
-    .tab.active {
-      border-bottom-color: #007bff;
-      color: #007bff;
-    }
-
-    .content {
-      padding: 24px;
-    }
-
-    .tab-pane {
-      display: none;
-    }
-
-    .tab-pane.active {
-      display: block;
-    }
-
-    .setting-group {
-      margin-bottom: 24px;
-    }
-
-    .setting-group h3 {
+    header h1 {
+      margin: 0;
       font-size: 16px;
-      color: #333;
-      margin-bottom: 12px;
+      font-weight: 600;
     }
-
-    .setting-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px 0;
-      border-bottom: 1px solid #f0f0f0;
-    }
-
-    .setting-item:last-child {
-      border-bottom: none;
-    }
-
-    .setting-label {
-      flex: 1;
-    }
-
-    .setting-label .name {
-      font-size: 14px;
-      color: #333;
-      margin-bottom: 4px;
-    }
-
-    .setting-label .description {
+    header p {
+      margin: 4px 0 0;
+      color: var(--muted);
       font-size: 12px;
-      color: #999;
     }
 
-    .setting-control {
-      min-width: 200px;
-      text-align: right;
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 22px;
+      border-bottom: 1px solid var(--border);
+      gap: 16px;
     }
+    .row:last-of-type { border-bottom: none; }
 
-    select, input[type="text"], input[type="number"] {
-      padding: 8px 12px;
-      border: 1px solid #ddd;
+    .row .label .name { font-weight: 500; }
+    .row .label .desc { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+    select {
+      font: inherit;
+      color: inherit;
+      background: var(--bg);
+      border: 1px solid var(--border);
       border-radius: 6px;
-      font-size: 14px;
+      padding: 6px 10px;
       min-width: 180px;
     }
 
     .toggle {
       position: relative;
       display: inline-block;
-      width: 48px;
-      height: 24px;
+      width: 38px;
+      height: 22px;
     }
-
-    .toggle input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-
+    .toggle input { display: none; }
     .toggle .slider {
       position: absolute;
+      inset: 0;
+      background: var(--border);
+      border-radius: 999px;
+      transition: background 0.18s ease;
       cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: #ccc;
-      transition: .3s;
-      border-radius: 24px;
     }
-
-    .toggle .slider:before {
-      position: absolute;
+    .toggle .slider::before {
       content: "";
-      height: 18px;
+      position: absolute;
+      top: 2px;
+      left: 2px;
       width: 18px;
-      left: 3px;
-      bottom: 3px;
-      background-color: white;
-      transition: .3s;
+      height: 18px;
+      background: var(--card);
       border-radius: 50%;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+      transition: transform 0.18s ease;
     }
+    .toggle input:checked + .slider { background: var(--accent); }
+    .toggle input:checked + .slider::before { transform: translateX(16px); }
 
-    .toggle input:checked + .slider {
-      background-color: #007bff;
-    }
-
-    .toggle input:checked + .slider:before {
-      transform: translateX(24px);
-    }
-
-    .actions {
-      padding: 24px;
-      border-top: 1px solid #eee;
+    footer {
       display: flex;
+      gap: 10px;
       justify-content: flex-end;
-      gap: 12px;
+      padding: 14px 22px;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
     }
-
     button {
-      padding: 10px 20px;
-      border: none;
+      font: inherit;
+      padding: 7px 14px;
       border-radius: 6px;
-      font-size: 14px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
       cursor: pointer;
-      transition: all 0.2s;
     }
-
-    .btn-primary {
-      background: #007bff;
-      color: white;
+    button.primary {
+      background: var(--accent);
+      color: var(--accent-text);
+      border-color: var(--accent);
     }
+    button:hover { filter: brightness(1.04); }
 
-    .btn-primary:hover {
-      background: #0056b3;
-    }
-
-    .btn-secondary {
-      background: #f0f0f0;
-      color: #333;
-    }
-
-    .btn-secondary:hover {
-      background: #e0e0e0;
-    }
-
-    .hotkey-input {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .hotkey-input input {
-      min-width: 150px;
-    }
-
-    .hotkey-input button {
-      padding: 8px 16px;
+    #status {
+      color: var(--muted);
       font-size: 12px;
+      margin-right: auto;
+      align-self: center;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <h1>⚙️ Settings</h1>
+    <header>
+      <h1>Settings</h1>
+      <p>Dictation engine, autostart, and recording preferences.</p>
+    </header>
+
+    <div class="row">
+      <div class="label">
+        <div class="name">Transcription engine</div>
+        <div class="desc">Streaming engine used when you press the dictation hotkey.</div>
+      </div>
+      <select id="engine">
+        <option value="nemotron-streaming">Nemotron streaming (recommended)</option>
+        <option value="moonshine-streaming">Moonshine streaming</option>
+        <option value="auto">Auto</option>
+      </select>
     </div>
 
-    <div class="tabs">
-      <div class="tab active" data-tab="general">General</div>
-      <div class="tab" data-tab="recording">Recording</div>
-      <div class="tab" data-tab="models">Models</div>
-      <div class="tab" data-tab="hotkeys">Hotkeys</div>
-      <div class="tab" data-tab="advanced">Advanced</div>
+    <div class="row">
+      <div class="label">
+        <div class="name">Launch at login</div>
+        <div class="desc">Start Listen automatically when you sign in.</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="autoStart" />
+        <span class="slider"></span>
+      </label>
     </div>
 
-    <div class="content">
-      <!-- General Tab -->
-      <div class="tab-pane active" id="general">
-        <div class="setting-group">
-          <h3>Application</h3>
-          <div class="setting-item">
-            <div class="setting-label">
-              <div class="name">Language</div>
-              <div class="description">Default transcription language</div>
-            </div>
-            <div class="setting-control">
-              <select id="language">
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-                <option value="zh">Chinese</option>
-                <option value="ja">Japanese</option>
-                <option value="auto">Auto-detect</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-label">
-              <div class="name">Auto-start</div>
-              <div class="description">Launch Listen on system startup</div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle">
-                <input type="checkbox" id="autoStart">
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-label">
-              <div class="name">Minimize to tray</div>
-              <div class="description">Keep app running in system tray</div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle">
-                <input type="checkbox" id="minimizeToTray" checked>
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <div class="setting-group">
-          <h3>Post-Processing</h3>
-          <div class="setting-item">
-            <div class="setting-label">
-              <div class="name">Auto-capitalize</div>
-              <div class="description">Automatically capitalize sentences</div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle">
-                <input type="checkbox" id="autoCapitalize" checked>
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-label">
-              <div class="name">Voice commands</div>
-              <div class="description">Enable "period", "comma", "new line" commands</div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle">
-                <input type="checkbox" id="voiceCommands" checked>
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Recording Tab -->
-      <div class="tab-pane" id="recording">
-        <div class="setting-group">
-          <h3>Recording Mode</h3>
-          <div class="setting-item">
-            <div class="setting-label">
-              <div class="name">Mode</div>
-              <div class="description">How recording is triggered</div>
-            </div>
-            <div class="setting-control">
-              <select id="recordingMode">
-                <option value="toggle">Toggle (press to start/stop)</option>
-                <option value="push-to-talk">Push-to-talk (hold to record)</option>
-                <option value="continuous">Continuous (always recording)</option>
-                <option value="vad">Voice Activity Detection</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-label">
-              <div class="name">Audio quality</div>
-              <div class="description">Recording quality (higher = better accuracy)</div>
-            </div>
-            <div class="setting-control">
-              <select id="audioQuality">
-                <option value="low">Low (8kHz)</option>
-                <option value="medium" selected>Medium (16kHz)</option>
-                <option value="high">High (48kHz)</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-label">
-              <div class="name">Noise reduction</div>
-              <div class="description">Pre-process audio to reduce background noise</div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle">
-                <input type="checkbox" id="noiseReduction">
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Models Tab -->
-      <div class="tab-pane" id="models">
-        <div class="setting-group">
-          <h3>Model Selection</h3>
-          <div class="setting-item">
-            <div class="setting-label">
-              <div class="name">Preferred model</div>
-              <div class="description">Which model to use</div>
-            </div>
-            <div class="setting-control">
-              <select id="preferredModel">
-                <option value="auto">Auto (best available)</option>
-                <option value="moonshine-tiny">Moonshine Tiny</option>
-                <option value="moonshine-base">Moonshine Base</option>
-                <option value="distil-whisper-small">Distil-Whisper Small</option>
-                <option value="faster-whisper-base">Faster-Whisper Base</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-label">
-              <div class="name">Priority</div>
-              <div class="description">When auto-selecting models</div>
-            </div>
-            <div class="setting-control">
-              <select id="modelPriority">
-                <option value="speed">Speed (fastest model)</option>
-                <option value="balance" selected>Balance</option>
-                <option value="accuracy">Accuracy (best model)</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-label">
-              <div class="name">Streaming transcription</div>
-              <div class="description">Show text as you speak (experimental)</div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle">
-                <input type="checkbox" id="enableStreaming">
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Hotkeys Tab -->
-      <div class="tab-pane" id="hotkeys">
-        <div class="setting-group">
-          <h3>Keyboard Shortcuts</h3>
-          <div class="setting-item">
-            <div class="setting-label">
-              <div class="name">Toggle recording</div>
-            </div>
-            <div class="setting-control">
-              <div class="hotkey-input">
-                <input type="text" id="hotkeyRecord" value="Ctrl+Shift+Space" readonly>
-                <button class="btn-secondary" onclick="recordHotkey('hotkeyRecord')">Change</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-label">
-              <div class="name">Cancel recording</div>
-            </div>
-            <div class="setting-control">
-              <div class="hotkey-input">
-                <input type="text" id="hotkeyCancel" value="Escape" readonly>
-                <button class="btn-secondary" onclick="recordHotkey('hotkeyCancel')">Change</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Advanced Tab -->
-      <div class="tab-pane" id="advanced">
-        <div class="setting-group">
-          <h3>API Server</h3>
-          <div class="setting-item">
-            <div class="setting-label">
-              <div class="name">Enable API server</div>
-              <div class="description">Allow other apps to use Listen via REST API</div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle">
-                <input type="checkbox" id="apiServerMode">
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-label">
-              <div class="name">API port</div>
-            </div>
-            <div class="setting-control">
-              <input type="number" id="apiPort" value="8765" min="1024" max="65535">
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="actions">
-      <button class="btn-secondary" onclick="window.close()">Cancel</button>
-      <button class="btn-secondary" onclick="resetSettings()">Reset to Defaults</button>
-      <button class="btn-primary" onclick="saveSettings()">Save</button>
-    </div>
+    <footer>
+      <span id="status"></span>
+      <button onclick="window.close()">Close</button>
+      <button class="primary" id="saveBtn">Save</button>
+    </footer>
   </div>
 
   <script>
-    // Tab switching
-    document.querySelectorAll('.tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    const { ipcRenderer } = require('electron');
 
-        tab.classList.add('active');
-        document.getElementById(tab.dataset.tab).classList.add('active');
-      });
-    });
+    const ui = {
+      engine: document.getElementById('engine'),
+      autoStart: document.getElementById('autoStart'),
+      status: document.getElementById('status'),
+      save: document.getElementById('saveBtn'),
+    };
 
-    // TODO: Load and save settings via IPC
-    function saveSettings() {
-      alert('Settings saved!');
-      // Send to main process
+    async function load() {
+      const settings = await ipcRenderer.invoke('settings:get');
+      ui.engine.value = settings.transcriptionEngine || 'nemotron-streaming';
+      ui.autoStart.checked = !!settings.autoStart;
     }
 
-    function resetSettings() {
-      if (confirm('Reset all settings to defaults?')) {
-        // Reset logic
+    async function save() {
+      ui.status.textContent = 'Saving…';
+      ui.save.disabled = true;
+      try {
+        await ipcRenderer.invoke('settings:save', {
+          transcriptionEngine: ui.engine.value,
+          autoStart: ui.autoStart.checked,
+        });
+        ui.status.textContent = 'Saved. Engine change applies on next launch.';
+      } catch (err) {
+        ui.status.textContent = 'Save failed: ' + (err && err.message ? err.message : err);
+      } finally {
+        ui.save.disabled = false;
       }
     }
 
-    function recordHotkey(inputId) {
-      const input = document.getElementById(inputId);
-      input.value = 'Press a key combination...';
-      // TODO: Implement hotkey recording
-    }
+    ui.save.addEventListener('click', save);
+    load();
   </script>
 </body>
 </html>

@@ -35,7 +35,7 @@ export class RecordingManager {
         const { spawn } = require('child_process');
 
         // Use PyAudioWPatch for fast, reliable Windows audio recording
-        const scriptPath = path.join(__dirname, '..', 'scripts', 'record_audio_windows.py');
+        const scriptPath = path.join(__dirname, '..', 'python', 'record_audio_windows.py');
 
         // Spawn Python process for recording
         this.recordingProcess = spawn('python', [scriptPath, this.audioFilePath]);

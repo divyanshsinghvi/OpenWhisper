@@ -30,6 +30,7 @@ export interface ListenSettings {
 
   // Model
   preferredModel: string | 'auto';
+  transcriptionEngine: 'moonshine-streaming' | 'nemotron-streaming' | 'auto';
   modelPriority: 'speed' | 'accuracy' | 'balance';
   enableStreaming: boolean;
 
@@ -42,8 +43,6 @@ export interface ListenSettings {
   // Privacy
   saveHistory: boolean;
   historyLimit: number;
-  autoDelete: boolean;
-  autoDeleteDays: number;
 
   // UI
   theme: 'light' | 'dark' | 'system';
@@ -91,6 +90,7 @@ export class SettingsManager {
 
       // Model
       preferredModel: 'auto',
+      transcriptionEngine: 'auto',
       modelPriority: 'balance',
       enableStreaming: false,
 
@@ -103,8 +103,6 @@ export class SettingsManager {
       // Privacy
       saveHistory: true,
       historyLimit: 100,
-      autoDelete: false,
-      autoDeleteDays: 30,
 
       // UI
       theme: 'system',
