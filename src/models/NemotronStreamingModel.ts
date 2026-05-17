@@ -15,8 +15,42 @@ import * as fs from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { EventEmitter } from 'events';
+import { app } from 'electron';
 
 const execAsync = promisify(exec);
+
+/**
+ * Path resolution differs between dev (npm start, reads from repo) and
+ * packaged (.app, reads from Contents/Resources/). The mapping:
+ *
+ *   dev                                         packaged
+ *   ---                                         --------
+ *   python3 (system)                            Resources/python/bin/python3
+ *   <repo>/python/<script>.py                   Resources/scripts/<script>.py
+ *   <repo>/models/<...>                         Resources/models/<...>
+ *
+ * extraResources in package.json wires the packaged side.
+ */
+function pythonExecutable(): string {
+  if (app?.isPackaged) {
+    return path.join(process.resourcesPath, 'python', 'bin', 'python3');
+  }
+  return 'python3';
+}
+
+function pythonScriptPath(name: string): string {
+  if (app?.isPackaged) {
+    return path.join(process.resourcesPath, 'scripts', name);
+  }
+  return path.join(__dirname, '..', '..', 'python', name);
+}
+
+function modelResourcePath(...segments: string[]): string {
+  if (app?.isPackaged) {
+    return path.join(process.resourcesPath, 'models', ...segments);
+  }
+  return path.join(__dirname, '..', '..', 'models', ...segments);
+}
 
 export interface NemotronStreamingEvent {
   type: 'started' | 'partial' | 'final';
@@ -32,12 +66,14 @@ export class NemotronStreamingModel extends EventEmitter {
   private currentPartial = '';
 
   private modelDir(): string {
-    return path.join(__dirname, '..', '..', 'models', 'nemotron-streaming-en-0.6b-int8');
+    return modelResourcePath('nemotron-streaming-en-0.6b-int8');
   }
 
   async isAvailable(): Promise<boolean> {
     try {
-      await execAsync('python3 -c "import sherpa_onnx, sounddevice"');
+      // execFile-style invocation isn't critical here (no user input), but use
+      // the bundled python when packaged so we don't depend on system python3.
+      await execAsync(`"${pythonExecutable()}" -c "import sherpa_onnx, sounddevice"`);
     } catch {
       return false;
     }
@@ -50,11 +86,15 @@ export class NemotronStreamingModel extends EventEmitter {
 
     this.readyPromise = new Promise<void>((resolve, reject) => {
       const { spawn } = require('child_process');
-      const serverScript = path.join(__dirname, '..', '..', 'python', 'nemotron_streaming_server.py');
-      const mplConfigDir = path.join(__dirname, '..', '..', 'temp', 'matplotlib');
+      const serverScript = pythonScriptPath('nemotron_streaming_server.py');
+      // Packaged apps can't write to Resources/, so park matplotlib config in
+      // the per-user data dir. Dev mode keeps the legacy in-repo temp/ path.
+      const mplConfigDir = app?.isPackaged
+        ? path.join(app.getPath('userData'), 'matplotlib')
+        : path.join(__dirname, '..', '..', 'temp', 'matplotlib');
       fs.mkdirSync(mplConfigDir, { recursive: true });
 
-      this.serverProcess = spawn('python3', [serverScript], {
+      this.serverProcess = spawn(pythonExecutable(), [serverScript], {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {
           ...process.env,
