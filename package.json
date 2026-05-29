@@ -45,16 +45,25 @@
     },
     "mac": {
       "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "identity": null,
       "target": [
         {
           "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
+          "arch": ["arm64"]
         }
       ],
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "extendInfo": {
+        "LSUIElement": false,
+        "NSMicrophoneUsageDescription": "OpenWhisper needs microphone access to transcribe your speech locally on-device.",
+        "NSAppleEventsUsageDescription": "OpenWhisper uses AppleScript to type transcribed text and fire voice-command keystrokes into the focused app."
+      },
+      "extraResources": [
+        { "from": "build/python", "to": "python" },
+        { "from": "python/nemotron_streaming_server.py", "to": "scripts/nemotron_streaming_server.py" },
+        { "from": "models/nemotron-streaming-en-0.6b-int8", "to": "models/nemotron-streaming-en-0.6b-int8" }
+      ]
     },
     "dmg": {
       "contents": [

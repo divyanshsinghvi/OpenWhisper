@@ -10,3 +10,7 @@ release/
 # Large local-only artifacts
 /models/
 /temp/
+
+# Bundled Python runtime + downloaded tarball (recreated by packaging/bundle-python-darwin-arm64.sh)
+/build/python/
+/build/cpython-*.tar.gz

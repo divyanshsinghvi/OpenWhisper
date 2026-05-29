@@ -72,7 +72,9 @@ export class SettingsManager {
     return {
       // General
       language: 'en',
-      autoStart: false,
+      // Default true so a fresh install launches at login. The user can flip
+      // it in Settings; the merge in loadSettings preserves their choice.
+      autoStart: true,
       minimizeToTray: true,
 
       // Recording

@@ -2,14 +2,16 @@ name: Build macOS DMG
 
 on:
   push:
-    branches: [ main, claude/* ]
+    branches: [ main, voice-shortcuts, "claude/*" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:
 
 jobs:
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-14  # arm64 runner — must match our DMG target
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
@@ -21,49 +23,71 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Setup Python (for install-nemotron.sh huggingface_hub download)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install npm dependencies
         run: npm ci
 
       - name: Build TypeScript
         run: npm run build
 
-      - name: Verify build output
+      # python-build-standalone tarball — ~25MB download; cache so re-runs skip it.
+      - name: Cache python-build-standalone tarball
+        uses: actions/cache@v4
+        with:
+          path: build/cpython-*.tar.gz
+          key: pybs-${{ runner.os }}-${{ runner.arch }}-20260510-3.12.13
+
+      - name: Bundle relocatable Python runtime + sherpa-onnx into build/python
+        run: bash packaging/bundle-python-darwin-arm64.sh
+
+      # Nemotron model is ~600MB; cache the HF download dir between runs.
+      - name: Cache HuggingFace download
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-nemotron-streaming-en-0.6b-int8-v1
+
+      - name: Download Nemotron streaming model into models/
+        run: bash install-nemotron.sh
+
+      - name: Verify extraResources sources exist
         run: |
-          echo "Checking dist directory..."
-          ls -la dist/ || echo "dist directory not found!"
-          echo "Checking assets directory..."
-          ls -la assets/ || echo "assets directory not found!"
+          test -x build/python/bin/python3 || { echo "[fail] missing build/python/bin/python3"; exit 1; }
+          test -f models/nemotron-streaming-en-0.6b-int8/encoder.int8.onnx || { echo "[fail] missing nemotron model"; exit 1; }
+          test -f python/nemotron_streaming_server.py || { echo "[fail] missing server script"; exit 1; }
+          test -f build/icon.png || echo "[warn] no icon.png; default Electron icon will be used"
 
       - name: Build macOS DMG
         run: npm run package -- --publish never
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false  # Disable code signing
-          DEBUG: electron-builder
+          CSC_IDENTITY_AUTO_DISCOVERY: false  # unsigned build — Gatekeeper will warn on first launch
 
       - name: List build artifacts
-        run: |
-          echo "Contents of release directory:"
-          ls -la release/ || echo "release directory not found!"
-          echo ""
-          echo "All DMG files:"
-          find . -name "*.dmg" -type f
+        run: ls -lh release/
 
-      - name: Upload DMG
+      - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OpenWhisper-macOS-DMG
+          name: OpenWhisper-macOS-arm64-DMG
           path: release/*.dmg
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload build info
-        uses: actions/upload-artifact@v4
+      # Tag-driven release: pushing a tag like v1.0.1 attaches the DMG to a
+      # GitHub Release with the same name. Skipped on branch pushes / PRs.
+      - name: Create GitHub Release on tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
         with:
-          name: build-info
-          path: |
-            release/*.yml
-            package.json
-          if-no-files-found: warn
+          files: release/*.dmg
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: false
 
   build-summary:
     runs-on: ubuntu-latest
@@ -71,26 +95,26 @@ jobs:
     if: always()
 
     steps:
-      - name: Download artifacts
+      - name: Download DMG
         uses: actions/download-artifact@v4
         with:
-          name: OpenWhisper-macOS-DMG
+          name: OpenWhisper-macOS-arm64-DMG
           path: ./artifacts
 
       - name: Create summary
         run: |
-          echo "## 📦 Build Complete!" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### macOS DMG Ready for Download" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Download from:** GitHub Actions → Artifacts → OpenWhisper-macOS-DMG" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Files:**" >> $GITHUB_STEP_SUMMARY
-          ls -lh ./artifacts/*.dmg | awk '{printf "- `%s` (%s)\n", $9, $5}' >> $GITHUB_STEP_SUMMARY || echo "- No DMG files found" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Installation:**" >> $GITHUB_STEP_SUMMARY
-          echo "1. Download the DMG from artifacts" >> $GITHUB_STEP_SUMMARY
-          echo "2. Open the DMG file" >> $GITHUB_STEP_SUMMARY
-          echo "3. Drag OpenWhisper to Applications folder" >> $GITHUB_STEP_SUMMARY
-          echo "4. Install sox: \`brew install sox\`" >> $GITHUB_STEP_SUMMARY
-          echo "5. Install a model: \`./install-moonshine.sh\`" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## OpenWhisper macOS DMG"
+            echo ""
+            echo "**Download:** Actions run → Artifacts → \`OpenWhisper-macOS-arm64-DMG\`"
+            echo ""
+            ls -lh ./artifacts/*.dmg 2>/dev/null | awk '{printf "- `%s` (%s)\n", $9, $5}' || echo "- (no DMG)"
+            echo ""
+            echo "### Install"
+            echo "1. Open the DMG and drag OpenWhisper to /Applications."
+            echo "2. First launch is blocked by Gatekeeper (unsigned). Right-click → Open → Open."
+            echo "3. Grant Accessibility in System Settings → Privacy & Security → Accessibility."
+            echo "4. Press ⌘⇧Space to start dictation."
+            echo ""
+            echo "Self-contained: bundled Python 3.12 runtime + sherpa-onnx + Nemotron streaming model. No \`brew install\` required."
+          } >> "$GITHUB_STEP_SUMMARY"
