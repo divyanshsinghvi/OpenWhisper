@@ -8,6 +8,8 @@ sounddevice>=0.4.6         # Microphone capture (cross-platform)
 soundfile>=0.12.1          # WAV I/O (used by fake-mic test mode)
 numpy>=1.24                # Audio buffers
 huggingface_hub>=0.20      # Model download in install-nemotron.sh
+pyautogui>=0.9.54          # Linux/Windows desktop typing and paste automation
+pynput>=1.7.7              # User-space keyboard fallback when tkinter is unavailable
 
 # Moonshine streaming engine (fallback)
 moonshine-voice            # Streaming Moonshine v2 SDK

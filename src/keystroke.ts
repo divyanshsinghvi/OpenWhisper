@@ -3,7 +3,7 @@
  *
  * Fire a single OS keystroke (with optional modifiers) from a high-level
  * KeystrokeAction. macOS uses osascript / "tell System Events"; Linux/Windows
- * fall through to a python pyautogui hop.
+ * fall through to the shared Python keyboard automation helper.
  *
  * Each call spawns a fresh process. That's fine at voice-command frequency
  * (~once per spoken trigger). The per-partial typing path is the hot loop —
@@ -12,6 +12,7 @@
  */
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import * as path from 'path';
 
 const execFileAsync = promisify(execFile);
 
@@ -53,8 +54,8 @@ const MAC_MODIFIER_PHRASE: Record<KeyModifier, string> = {
   alt: 'option down',
 };
 
-// pyautogui key names for non-macOS fallback.
-const PYAUTOGUI_KEY_NAME: Record<string, string> = {
+// Helper key names for non-macOS fallback.
+const HELPER_KEY_NAME: Record<string, string> = {
   Return: 'enter',
   Tab: 'tab',
   Space: 'space',
@@ -67,13 +68,13 @@ const PYAUTOGUI_KEY_NAME: Record<string, string> = {
   BracketRight: ']',
 };
 
-function pyautoguiKey(key: string): string {
-  if (PYAUTOGUI_KEY_NAME[key]) return PYAUTOGUI_KEY_NAME[key];
+function helperKey(key: string): string {
+  if (HELPER_KEY_NAME[key]) return HELPER_KEY_NAME[key];
   if (/^[A-Z]$/.test(key)) return key.toLowerCase();
-  throw new Error(`pyautogui key mapping missing for "${key}"`);
+  throw new Error(`keyboard helper key mapping missing for "${key}"`);
 }
 
-const PYAUTOGUI_MODIFIER_NAME: Record<KeyModifier, string> = {
+const HELPER_MODIFIER_NAME: Record<KeyModifier, string> = {
   cmd: 'command',
   shift: 'shift',
   ctrl: 'ctrl',
@@ -95,27 +96,23 @@ export async function fireKeystroke(action: KeystrokeAction): Promise<void> {
     return;
   }
 
-  // Linux / Windows: pyautogui via stdin (no shell interpolation).
+  // Linux / Windows: shared helper via stdin (no shell interpolation).
   const keys = [
-    ...(action.modifiers ?? []).map(m => PYAUTOGUI_MODIFIER_NAME[m]),
-    pyautoguiKey(action.key),
+    ...(action.modifiers ?? []).map(m => HELPER_MODIFIER_NAME[m]),
+    helperKey(action.key),
   ];
-  const script = `
-import json, sys, pyautogui
-keys = json.loads(sys.stdin.read())
-pyautogui.hotkey(*keys)
-`.trim();
+  const scriptPath = path.join(__dirname, '..', 'python', 'keyboard_automation.py');
 
   await new Promise<void>((resolve, reject) => {
-    const child = require('child_process').spawn('python3', ['-c', script]);
+    const child = require('child_process').spawn('python3', [scriptPath]);
     let stderr = '';
     child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
     child.on('error', reject);
     child.on('exit', (code: number) => {
       if (code === 0) resolve();
-      else reject(new Error(`pyautogui keystroke exited ${code}: ${stderr.trim()}`));
+      else reject(new Error(`keyboard helper exited ${code}: ${stderr.trim()}`));
     });
-    child.stdin.write(JSON.stringify(keys));
+    child.stdin.write(JSON.stringify({ type: 'hotkey', keys }));
     child.stdin.end();
   });
 }

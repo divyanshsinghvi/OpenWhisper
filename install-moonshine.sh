@@ -42,21 +42,21 @@ install_uv() {
 # Check if we're already in an activated venv
 if [ -n "$VIRTUAL_ENV" ]; then
     echo "✅ Already in virtual environment: $VIRTUAL_ENV"
-    echo "📦 Installing useful-moonshine..."
-    pip install useful-moonshine
+    echo "📦 Installing useful-moonshine and keyboard automation deps..."
+    pip install useful-moonshine pyautogui pynput
 
 elif [ -d "$VENV_DIR" ]; then
     # Venv exists but not activated
     echo "✅ Using existing virtual environment: $VENV_DIR"
-    echo "📦 Installing useful-moonshine..."
+    echo "📦 Installing useful-moonshine and keyboard automation deps..."
 
     if install_uv; then
         # Use uv (faster)
-        uv pip install --python "$VENV_DIR/bin/python3" useful-moonshine
+        uv pip install --python "$VENV_DIR/bin/python3" useful-moonshine pyautogui pynput
     else
         # Use regular pip
         source "$VENV_DIR/bin/activate"
-        pip install useful-moonshine
+        pip install useful-moonshine pyautogui pynput
         deactivate
     fi
 
@@ -66,16 +66,16 @@ else
         # Use uv to create venv (faster)
         echo "📦 Creating virtual environment with uv..."
         uv venv "$VENV_DIR"
-        echo "📦 Installing useful-moonshine with uv..."
-        uv pip install --python "$VENV_DIR/bin/python3" useful-moonshine
+        echo "📦 Installing useful-moonshine and keyboard automation deps with uv..."
+        uv pip install --python "$VENV_DIR/bin/python3" useful-moonshine pyautogui pynput
     else
         # Use standard venv
         echo "📦 Creating virtual environment with venv..."
         python3 -m venv "$VENV_DIR"
         source "$VENV_DIR/bin/activate"
         pip install --upgrade pip
-        echo "📦 Installing useful-moonshine..."
-        pip install useful-moonshine
+        echo "📦 Installing useful-moonshine and keyboard automation deps..."
+        pip install useful-moonshine pyautogui pynput
         deactivate
     fi
 fi

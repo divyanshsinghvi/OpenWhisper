@@ -16,7 +16,19 @@ https://github.com/user-attachments/assets/replace-with-your-upload
 ## Quick start
 
 ```bash
-brew install sox              # macOS audio capture
+# macOS audio capture
+brew install sox
+
+# Linux audio capture
+sudo apt-get install sox alsa-utils
+
+# Optional Linux pyautogui backend. Skip if you do not have sudo;
+# the installer also adds a pynput keyboard fallback in the virtualenv.
+sudo apt-get install python3-tk python3-dev
+
+# Linux: point Electron/keyboard automation at the active X display if DISPLAY is unset
+export DISPLAY=$(ls /tmp/.X11-unix/ | sed 's/X/:/' | head -n 1)
+
 npm install
 ./install-nemotron.sh         # python deps + ONNX model (~630 MB)
 npm run build

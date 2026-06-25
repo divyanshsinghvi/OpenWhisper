@@ -16,7 +16,23 @@ echo "==> Checking Python interpreter ($PYTHON_BIN)"
 
 echo "==> Installing Python deps"
 "$PYTHON_BIN" -m pip install --upgrade --quiet pip
-"$PYTHON_BIN" -m pip install --upgrade --quiet sherpa-onnx sounddevice huggingface_hub
+"$PYTHON_BIN" -m pip install --upgrade --quiet sherpa-onnx sounddevice huggingface_hub pyautogui pynput
+
+if [[ "$(uname -s)" == "Linux" ]]; then
+  if ! "$PYTHON_BIN" - <<'PY' >/dev/null 2>&1
+import tkinter
+PY
+  then
+    cat >&2 <<'EOF'
+[WARN] tkinter is not available. pyautogui/mouseinfo may not work, so Listen
+       will use the pynput keyboard fallback installed in this virtualenv.
+       For the pyautogui backend, install:
+
+       sudo apt-get install python3-tk python3-dev
+
+EOF
+  fi
+fi
 
 mkdir -p "$DEST"
 

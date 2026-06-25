@@ -1,7 +1,7 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, clipboard, screen, systemPreferences } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { exec, execFile } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { RecordingManager } from './recording';
 import { ModularTranscriptionService } from './transcription-router';
@@ -12,7 +12,6 @@ import { TrayManager } from './tray';
 import { extractTrailingAction } from './voice-actions';
 import { fireKeystroke } from './keystroke';
 
-const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
 let mainWindow: BrowserWindow | null = null;
@@ -36,6 +35,22 @@ const settingsManager = new SettingsManager();
 
 function getActiveStreamingModel(): MoonshineStreamingModel | NemotronStreamingModel | null {
   return nemotronStreamingModel || streamingModel;
+}
+
+async function runKeyboardAutomation(action: object): Promise<void> {
+  const scriptPath = path.join(__dirname, '..', 'python', 'keyboard_automation.py');
+  await new Promise<void>((resolve, reject) => {
+    const child = require('child_process').spawn('python3', [scriptPath]);
+    let stderr = '';
+    child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
+    child.on('error', reject);
+    child.on('exit', (code: number) => {
+      if (code === 0) resolve();
+      else reject(new Error(`keyboard automation exited ${code}: ${stderr.trim()}`));
+    });
+    child.stdin.write(JSON.stringify(action));
+    child.stdin.end();
+  });
 }
 
 /**
@@ -82,7 +97,7 @@ async function pasteClipboardIntoFocusedApp(): Promise<void> {
     return;
   }
 
-  await execAsync(`python3 -c "import pyautogui; pyautogui.hotkey('ctrl', 'v')"`);
+  await runKeyboardAutomation({ type: 'hotkey', keys: ['ctrl', 'v'] });
 }
 
 function escapeAppleScriptText(text: string): string {
@@ -132,29 +147,9 @@ async function applyLiveTextChange(nextText: string): Promise<void> {
 
   // Linux / Windows: pass the text via stdin, not via the shell, so that
   // characters like $, `, and " in the transcript can never be interpreted
-  // as shell command substitution. Combine backspaces + insert into one
-  // python invocation to avoid double process spawn.
+  // as shell command substitution.
   if (deleteCount > 0 || insertText) {
-    const pyScript = `
-import json, sys, pyautogui
-payload = json.loads(sys.stdin.read())
-for _ in range(payload['deletes']):
-    pyautogui.press('backspace')
-if payload['text']:
-    pyautogui.write(payload['text'])
-`.trim();
-    await new Promise<void>((resolve, reject) => {
-      const child = require('child_process').spawn('python3', ['-c', pyScript]);
-      let stderr = '';
-      child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
-      child.on('error', reject);
-      child.on('exit', (code: number) => {
-        if (code === 0) resolve();
-        else reject(new Error(`python3 exited ${code}: ${stderr.trim()}`));
-      });
-      child.stdin.write(JSON.stringify({ deletes: deleteCount, text: insertText }));
-      child.stdin.end();
-    });
+    await runKeyboardAutomation({ type: 'type_change', deletes: deleteCount, text: insertText });
   }
 
   liveTypedText = normalizedText;
