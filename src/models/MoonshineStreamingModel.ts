@@ -10,7 +10,7 @@ import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { EventEmitter } from 'events';
-import { app } from 'electron';
+import { pythonExecutable, pythonScriptPath } from '../python-runtime';
 
 const execAsync = promisify(exec);
 
@@ -29,7 +29,7 @@ export class MoonshineStreamingModel extends EventEmitter {
 
   async isAvailable(): Promise<boolean> {
     try {
-      await execAsync('python3 -c "import moonshine_voice"');
+      await execAsync(`"${pythonExecutable()}" -c "import moonshine_voice"`);
       return true;
     } catch {
       return false;
@@ -41,11 +41,9 @@ export class MoonshineStreamingModel extends EventEmitter {
 
     this.readyPromise = new Promise<void>((resolve, reject) => {
       const { spawn } = require('child_process');
-      const serverScript = app?.isPackaged
-        ? path.join(process.resourcesPath, 'scripts', 'moonshine_streaming_server.py')
-        : path.join(__dirname, '..', '..', 'python', 'moonshine_streaming_server.py');
+      const serverScript = pythonScriptPath('moonshine_streaming_server.py');
 
-      this.serverProcess = spawn('python3', [serverScript], {
+      this.serverProcess = spawn(pythonExecutable(), [serverScript], {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
 

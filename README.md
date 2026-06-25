@@ -37,6 +37,14 @@ OPENWHISPER_TRANSCRIPTION_ENGINE=nemotron-streaming npm start
 
 Press `Ctrl+Shift+Space` (or `Cmd+Shift+Space` on macOS) → speak → text streams into your focused textbox.
 
+## Linux package setup
+
+The AppImage and `.deb` include the Electron app, helper scripts, and Nemotron
+model files. On first launch, if Python speech packages are missing, Listen
+shows an in-app setup screen that creates a private virtual environment under
+the app data directory and installs the required Python packages there. This
+does not require sudo.
+
 ## How it works
 
 A long-lived Python process owns the microphone and runs a streaming ASR model

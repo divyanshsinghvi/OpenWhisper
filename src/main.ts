@@ -11,6 +11,12 @@ import { SettingsManager } from './settings';
 import { TrayManager } from './tray';
 import { extractTrailingAction } from './voice-actions';
 import { fireKeystroke } from './keystroke';
+import {
+  checkPythonRuntime,
+  installLinuxPythonRuntime,
+  pythonExecutable,
+  pythonScriptPath,
+} from './python-runtime';
 
 const execFileAsync = promisify(execFile);
 
@@ -31,23 +37,17 @@ let previousWindowFocus: any = null;
 let saveButtonPositionTimer: NodeJS.Timeout | null = null;
 let liveTypedText = '';
 let liveTypeQueue: Promise<void> = Promise.resolve();
+let isInstallingPythonRuntime = false;
 const settingsManager = new SettingsManager();
 
 function getActiveStreamingModel(): MoonshineStreamingModel | NemotronStreamingModel | null {
   return nemotronStreamingModel || streamingModel;
 }
 
-function pythonScriptPath(name: string): string {
-  if (app?.isPackaged) {
-    return path.join(process.resourcesPath, 'scripts', name);
-  }
-  return path.join(__dirname, '..', 'python', name);
-}
-
 async function runKeyboardAutomation(action: object): Promise<void> {
   const scriptPath = pythonScriptPath('keyboard_automation.py');
   await new Promise<void>((resolve, reject) => {
-    const child = require('child_process').spawn('python3', [scriptPath]);
+    const child = require('child_process').spawn(pythonExecutable(), [scriptPath]);
     let stderr = '';
     child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
     child.on('error', reject);
@@ -66,7 +66,7 @@ async function runKeyboardAutomation(action: object): Promise<void> {
 async function captureWindowFocus(): Promise<any> {
   try {
     const scriptPath = pythonScriptPath('window_focus.py');
-    const { stdout } = await execFileAsync('python3', [scriptPath, 'get']);
+    const { stdout } = await execFileAsync(pythonExecutable(), [scriptPath, 'get']);
     const windowInfo = JSON.parse(stdout.trim());
     if (windowInfo.handle) {
       console.log(`[OK] Captured focus: ${windowInfo.title || 'Unknown'}`);
@@ -86,7 +86,7 @@ async function restoreWindowFocus(windowInfo: any): Promise<boolean> {
 
   try {
     const scriptPath = pythonScriptPath('window_focus.py');
-    const { stdout } = await execFileAsync('python3', [scriptPath, 'restore', JSON.stringify(windowInfo)]);
+    const { stdout } = await execFileAsync(pythonExecutable(), [scriptPath, 'restore', JSON.stringify(windowInfo)]);
     const result = JSON.parse(stdout.trim());
     if (result.success) {
       console.log(`[OK] Restored focus to: ${windowInfo.title || 'previous window'}`);
@@ -536,6 +536,24 @@ function checkAccessibilityPermission(): void {
   systemPreferences.isTrustedAccessibilityClient(true);
 }
 
+function showSetupRequired(missing: string[], python: string): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  const send = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send('app-ready');
+    mainWindow.webContents.send('setup-required', { missing, python });
+    mainWindow.show();
+    updateFloatingButtonState('processing');
+  };
+
+  if (mainWindow.webContents.isLoading()) {
+    mainWindow.webContents.once('did-finish-load', send);
+  } else {
+    send();
+  }
+}
+
 app.whenReady().then(async () => {
   createWindow();
   createFloatingButtonWindow();
@@ -549,6 +567,21 @@ app.whenReady().then(async () => {
   trayManager.create();
 
   applyAutoStart(settingsManager.get().autoStart);
+
+  if (app.isPackaged && process.platform === 'linux') {
+    const runtime = await checkPythonRuntime();
+    if (!runtime.ok) {
+      console.log('[SETUP] Linux Python runtime needs setup:', runtime.missing.join(', '));
+      showSetupRequired(runtime.missing, runtime.python);
+
+      app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+          createWindow();
+        }
+      });
+      return;
+    }
+  }
 
   const settings = settingsManager.get();
   const transcriptionEngine = process.env.OPENWHISPER_TRANSCRIPTION_ENGINE
@@ -705,6 +738,35 @@ ipcMain.on('cancel-recording', () => {
     isRecording = false;
   }
   mainWindow?.hide();
+});
+
+ipcMain.handle('setup-python-runtime', async () => {
+  if (isInstallingPythonRuntime) {
+    return { ok: false, error: 'Python setup is already running.' };
+  }
+
+  isInstallingPythonRuntime = true;
+  try {
+    await installLinuxPythonRuntime((line) => {
+      mainWindow?.webContents.send('setup-progress', { line });
+    });
+
+    const runtime = await checkPythonRuntime();
+    if (!runtime.ok) {
+      throw new Error(`Setup finished but modules are still missing: ${runtime.missing.join(', ')}`);
+    }
+
+    mainWindow?.webContents.send('setup-complete', {
+      message: 'Python setup complete. Restart Listen to enable dictation.',
+    });
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    mainWindow?.webContents.send('setup-error', { error: message });
+    return { ok: false, error: message };
+  } finally {
+    isInstallingPythonRuntime = false;
+  }
 });
 
 // Floating button IPC handlers

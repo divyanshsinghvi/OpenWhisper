@@ -122,6 +122,24 @@
       transform: translateY(0);
     }
 
+    button:disabled {
+      cursor: default;
+      opacity: 0.65;
+      transform: none;
+    }
+
+    .primary-button {
+      background: #4CAF50;
+      color: #08120a;
+      border-color: #4CAF50;
+      min-width: 112px;
+    }
+
+    .primary-button:hover:not(:disabled) {
+      background: #63d267;
+      border-color: #63d267;
+    }
+
     .error {
       color: #f44336;
       background: rgba(244, 67, 54, 0.1);
@@ -269,6 +287,86 @@
       margin-top: 10px;
     }
 
+    .setup-panel {
+      width: 360px;
+      text-align: left;
+    }
+
+    .setup-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .setup-badge {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: rgba(76, 175, 80, 0.14);
+      border: 1px solid rgba(76, 175, 80, 0.35);
+      color: #86ef8a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 700;
+      flex: 0 0 auto;
+    }
+
+    .setup-title {
+      color: #ffffff;
+      font-size: 17px;
+      font-weight: 650;
+      line-height: 1.2;
+    }
+
+    .setup-copy {
+      color: rgba(255, 255, 255, 0.68);
+      font-size: 13px;
+      line-height: 1.45;
+      margin-bottom: 14px;
+    }
+
+    .setup-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .setup-chip {
+      max-width: 100%;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: rgba(255, 255, 255, 0.72);
+      font-size: 11px;
+      overflow-wrap: anywhere;
+    }
+
+    .setup-log {
+      width: 100%;
+      height: 104px;
+      padding: 10px 12px;
+      background: rgba(0, 0, 0, 0.24);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      color: rgba(255, 255, 255, 0.78);
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      margin-bottom: 14px;
+    }
+
+    .setup-actions {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
     .hidden {
       display: none;
     }
@@ -338,6 +436,61 @@
           `;
           break;
 
+        case 'setup-required':
+          const missing = data.missing || [];
+          statusDisplay.innerHTML = `
+            <div class="setup-panel">
+              <div class="setup-header">
+                <div class="setup-badge">↓</div>
+                <div>
+                  <div class="setup-title">Python setup required</div>
+                  <div class="status-subtext">One-time local environment</div>
+                </div>
+              </div>
+              <div class="setup-copy">Install the speech and keyboard packages into a private app environment. No sudo is needed.</div>
+              <div class="setup-meta">
+                ${missing.slice(0, 5).map(item => `<span class="setup-chip">${item}</span>`).join('')}
+                ${missing.length > 5 ? `<span class="setup-chip">+${missing.length - 5} more</span>` : ''}
+              </div>
+              <div class="setup-log" id="setup-log">Ready to install.</div>
+              <div class="setup-actions">
+                <button class="primary-button" id="setup-install-btn">Install</button>
+              </div>
+            </div>
+          `;
+          document.getElementById('setup-install-btn')?.addEventListener('click', async () => {
+            const button = document.getElementById('setup-install-btn');
+            const log = document.getElementById('setup-log');
+            if (button) {
+              button.disabled = true;
+              button.textContent = 'Installing';
+            }
+            if (log) {
+              log.textContent = 'Starting setup...';
+            }
+            const result = await ipcRenderer.invoke('setup-python-runtime');
+            if (!result.ok && button) {
+              button.disabled = false;
+              button.textContent = 'Retry';
+            }
+          });
+          break;
+
+        case 'setup-complete':
+          statusDisplay.innerHTML = `
+            <div class="setup-panel">
+              <div class="setup-header">
+                <div class="setup-badge">✓</div>
+                <div>
+                  <div class="setup-title">Setup complete</div>
+                  <div class="status-subtext">Restart Listen to enable dictation</div>
+                </div>
+              </div>
+              <div class="setup-copy">${data.message || 'Python setup complete. Restart Listen to enable dictation.'}</div>
+            </div>
+          `;
+          break;
+
         default:
           statusDisplay.innerHTML = `
             <div class="status-icon">🎤</div>
@@ -350,6 +503,26 @@
     // Listen for state updates from main process
     ipcRenderer.on('recording-state', (event, data) => {
       updateUI(data.state, data);
+    });
+
+    ipcRenderer.on('setup-required', (event, data) => {
+      updateUI('setup-required', data);
+    });
+
+    ipcRenderer.on('setup-progress', (event, data) => {
+      const log = document.getElementById('setup-log');
+      if (log && data.line) {
+        log.textContent = `${log.textContent}\n${data.line}`.trim();
+        log.scrollTop = log.scrollHeight;
+      }
+    });
+
+    ipcRenderer.on('setup-complete', (event, data) => {
+      updateUI('setup-complete', data);
+    });
+
+    ipcRenderer.on('setup-error', (event, data) => {
+      updateUI('error', data);
     });
 
     // Listen for streaming transcription updates

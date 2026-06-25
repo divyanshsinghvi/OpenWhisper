@@ -12,7 +12,7 @@
  */
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import * as path from 'path';
+import { pythonExecutable, pythonScriptPath } from './python-runtime';
 
 const execFileAsync = promisify(execFile);
 
@@ -101,10 +101,10 @@ export async function fireKeystroke(action: KeystrokeAction): Promise<void> {
     ...(action.modifiers ?? []).map(m => HELPER_MODIFIER_NAME[m]),
     helperKey(action.key),
   ];
-  const scriptPath = path.join(__dirname, '..', 'python', 'keyboard_automation.py');
+  const scriptPath = pythonScriptPath('keyboard_automation.py');
 
   await new Promise<void>((resolve, reject) => {
-    const child = require('child_process').spawn('python3', [scriptPath]);
+    const child = require('child_process').spawn(pythonExecutable(), [scriptPath]);
     let stderr = '';
     child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
     child.on('error', reject);

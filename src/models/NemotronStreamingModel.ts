@@ -16,6 +16,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { EventEmitter } from 'events';
 import { app } from 'electron';
+import { pythonExecutable, pythonScriptPath } from '../python-runtime';
 
 const execAsync = promisify(exec);
 
@@ -31,21 +32,6 @@ const execAsync = promisify(exec);
  *
  * extraResources in package.json wires the packaged side.
  */
-function pythonExecutable(): string {
-  if (app?.isPackaged) {
-    const bundledPython = path.join(process.resourcesPath, 'python', 'bin', 'python3');
-    return fs.existsSync(bundledPython) ? bundledPython : 'python3';
-  }
-  return 'python3';
-}
-
-function pythonScriptPath(name: string): string {
-  if (app?.isPackaged) {
-    return path.join(process.resourcesPath, 'scripts', name);
-  }
-  return path.join(__dirname, '..', '..', 'python', name);
-}
-
 function modelResourcePath(...segments: string[]): string {
   if (app?.isPackaged) {
     return path.join(process.resourcesPath, 'models', ...segments);
