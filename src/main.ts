@@ -37,8 +37,15 @@ function getActiveStreamingModel(): MoonshineStreamingModel | NemotronStreamingM
   return nemotronStreamingModel || streamingModel;
 }
 
+function pythonScriptPath(name: string): string {
+  if (app?.isPackaged) {
+    return path.join(process.resourcesPath, 'scripts', name);
+  }
+  return path.join(__dirname, '..', 'python', name);
+}
+
 async function runKeyboardAutomation(action: object): Promise<void> {
-  const scriptPath = path.join(__dirname, '..', 'python', 'keyboard_automation.py');
+  const scriptPath = pythonScriptPath('keyboard_automation.py');
   await new Promise<void>((resolve, reject) => {
     const child = require('child_process').spawn('python3', [scriptPath]);
     let stderr = '';
@@ -58,7 +65,7 @@ async function runKeyboardAutomation(action: object): Promise<void> {
  */
 async function captureWindowFocus(): Promise<any> {
   try {
-    const scriptPath = path.join(__dirname, '..', 'python', 'window_focus.py');
+    const scriptPath = pythonScriptPath('window_focus.py');
     const { stdout } = await execFileAsync('python3', [scriptPath, 'get']);
     const windowInfo = JSON.parse(stdout.trim());
     if (windowInfo.handle) {
@@ -78,7 +85,7 @@ async function restoreWindowFocus(windowInfo: any): Promise<boolean> {
   if (!windowInfo || !windowInfo.handle) return false;
 
   try {
-    const scriptPath = path.join(__dirname, '..', 'python', 'window_focus.py');
+    const scriptPath = pythonScriptPath('window_focus.py');
     const { stdout } = await execFileAsync('python3', [scriptPath, 'restore', JSON.stringify(windowInfo)]);
     const result = JSON.parse(stdout.trim());
     if (result.success) {

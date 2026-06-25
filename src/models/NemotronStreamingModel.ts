@@ -33,7 +33,8 @@ const execAsync = promisify(exec);
  */
 function pythonExecutable(): string {
   if (app?.isPackaged) {
-    return path.join(process.resourcesPath, 'python', 'bin', 'python3');
+    const bundledPython = path.join(process.resourcesPath, 'python', 'bin', 'python3');
+    return fs.existsSync(bundledPython) ? bundledPython : 'python3';
   }
   return 'python3';
 }

@@ -17,7 +17,7 @@
     "dictation",
     "overlay"
   ],
-  "author": "",
+  "author": "divyanshsinghvi <divyanshsinghvi@users.noreply.github.com>",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.19.25",
@@ -43,6 +43,10 @@
     "directories": {
       "output": "release"
     },
+    "extraResources": [
+      { "from": "python", "to": "scripts" },
+      { "from": "models/nemotron-streaming-en-0.6b-int8", "to": "models/nemotron-streaming-en-0.6b-int8" }
+    ],
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "build/icon.png",
@@ -60,9 +64,7 @@
         "NSAppleEventsUsageDescription": "OpenWhisper uses AppleScript to type transcribed text and fire voice-command keystrokes into the focused app."
       },
       "extraResources": [
-        { "from": "build/python", "to": "python" },
-        { "from": "python/nemotron_streaming_server.py", "to": "scripts/nemotron_streaming_server.py" },
-        { "from": "models/nemotron-streaming-en-0.6b-int8", "to": "models/nemotron-streaming-en-0.6b-int8" }
+        { "from": "build/python", "to": "python" }
       ]
     },
     "dmg": {
@@ -85,7 +87,8 @@
         "AppImage",
         "deb"
       ],
-      "category": "Utility"
+      "category": "Utility",
+      "maintainer": "divyanshsinghvi <divyanshsinghvi@users.noreply.github.com>"
     },
     "win": {
       "target": [
