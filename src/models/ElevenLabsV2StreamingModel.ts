@@ -62,6 +62,8 @@ export class ElevenLabsV2StreamingModel extends EventEmitter {
   private currentPartial = '';
   private stopTimer: NodeJS.Timeout | null = null;
   private speechActivityTracker = new LocalSpeechActivityTracker();
+  private cloudPaused = false;
+  private reconnecting = false;
 
   async isAvailable(): Promise<boolean> {
     return Boolean(elevenLabsApiKey());
@@ -82,6 +84,8 @@ export class ElevenLabsV2StreamingModel extends EventEmitter {
 
     this.finalTexts = [];
     this.currentPartial = '';
+    this.cloudPaused = false;
+    this.reconnecting = false;
     this.speechActivityTracker.reset();
     await this.connect();
     this.startAudioCapture();
@@ -122,6 +126,16 @@ export class ElevenLabsV2StreamingModel extends EventEmitter {
     return parts.join(' ').trim();
   }
 
+  private appendFinalText(text: string): void {
+    const cleaned = text.trim();
+    if (!cleaned) return;
+
+    const last = this.finalTexts[this.finalTexts.length - 1]?.trim();
+    if (last === cleaned) return;
+
+    this.finalTexts.push(cleaned);
+  }
+
   async cleanup(): Promise<void> {
     if (this.stopTimer) {
       clearTimeout(this.stopTimer);
@@ -135,6 +149,44 @@ export class ElevenLabsV2StreamingModel extends EventEmitter {
 
     this.closeWebSocket();
     this.ready = false;
+  }
+
+  private pauseCloudForSilence(silenceMs: number): void {
+    if (this.cloudPaused) return;
+
+    this.cloudPaused = true;
+    const committedPartial = this.currentPartial.trim();
+    this.appendFinalText(committedPartial);
+    this.currentPartial = '';
+    if (committedPartial) {
+      this.emit('transcription', { type: 'final', text: committedPartial, time: Date.now() });
+    }
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        message_type: 'input_audio_chunk',
+        audio_base_64: '',
+        sample_rate: SAMPLE_RATE,
+        commit: true,
+      }));
+    }
+    this.closeWebSocket();
+    this.emit('auto-stop', { reason: 'silence', silenceMs });
+  }
+
+  private async resumeCloudAfterSpeech(): Promise<void> {
+    if (!this.cloudPaused || this.reconnecting) return;
+
+    this.reconnecting = true;
+    try {
+      await this.connect();
+      this.cloudPaused = false;
+      this.speechActivityTracker.reactivate();
+      this.emit('auto-resume', { reason: 'speech' });
+    } catch (error) {
+      this.emit('error', `ElevenLabs reconnect failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      this.reconnecting = false;
+    }
   }
 
   private connect(): Promise<void> {
@@ -201,7 +253,7 @@ export class ElevenLabsV2StreamingModel extends EventEmitter {
       || messageType === 'final'
     ) {
       if (text) {
-        this.finalTexts.push(text);
+        this.appendFinalText(text);
       }
       this.currentPartial = '';
       this.emit('transcription', { type: 'final', text, time: Date.now() });
@@ -215,9 +267,8 @@ export class ElevenLabsV2StreamingModel extends EventEmitter {
     });
 
     this.recordingProcess.stdout?.on('data', (chunk: Buffer) => {
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-
       this.trackLocalAudioActivity(chunk);
+      if (this.cloudPaused || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
       this.ws.send(JSON.stringify({
         message_type: 'input_audio_chunk',
@@ -253,7 +304,12 @@ export class ElevenLabsV2StreamingModel extends EventEmitter {
   private trackLocalAudioActivity(chunk: Buffer): void {
     const result = this.speechActivityTracker.track(chunk);
     if (result.shouldAutoStop) {
-      this.emit('auto-stop', { reason: 'silence', silenceMs: result.silenceMs });
+      this.pauseCloudForSilence(result.silenceMs);
+      return;
+    }
+
+    if (result.speech && this.cloudPaused) {
+      void this.resumeCloudAfterSpeech();
     }
   }
 }

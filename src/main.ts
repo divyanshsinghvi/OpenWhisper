@@ -22,6 +22,49 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+function loadDotEnvFile(): void {
+  const envPath = path.join(process.cwd(), '.env');
+  if (!fs.existsSync(envPath)) return;
+
+  try {
+    const overrideKeys = new Set([
+      'OPENWHISPER_AUTO_STOP_SILENCE_MS',
+      'OPENWHISPER_CLOUD_USAGE_ALERT_MS',
+      'OPENWHISPER_VAD_MODE',
+      'OPENWHISPER_WEBRTC_VAD_AGGRESSIVENESS',
+      'OPENWHISPER_WEBRTC_VAD_MIN_SPEECH_RATIO',
+      'OPENWHISPER_VAD_RMS_THRESHOLD',
+      'OPENWHISPER_VAD_DEBUG',
+    ]);
+    const lines = fs.readFileSync(envPath, 'utf-8').split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+
+      const separator = trimmed.indexOf('=');
+      if (separator === -1) continue;
+
+      const key = trimmed.slice(0, separator).trim();
+      let value = trimmed.slice(separator + 1).trim();
+      if (!key) continue;
+
+      if (
+        (value.startsWith('"') && value.endsWith('"'))
+        || (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+
+      if (process.env[key] !== undefined && !overrideKeys.has(key)) continue;
+      process.env[key] = value;
+    }
+  } catch (error) {
+    console.log(`[WARN] Could not load .env: ${error}`);
+  }
+}
+
+loadDotEnvFile();
+
 let mainWindow: BrowserWindow | null = null;
 let floatingButtonWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
@@ -45,6 +88,10 @@ let isInstallingPythonRuntime = false;
 let cloudRecordingStartedAt = 0;
 let cloudUsageAlerted = false;
 let cloudUsageAlertTimer: NodeJS.Timeout | null = null;
+let cloudStreamActiveStartedAt = 0;
+let cloudStreamActiveMs = 0;
+let cloudPausedStartedAt = 0;
+let cloudPausedMs = 0;
 const settingsManager = new SettingsManager();
 
 const cloudUsageFile = path.join(app.getPath('userData'), 'cloud-usage.json');
@@ -176,6 +223,50 @@ function recordCloudUsageSession(engine: string, startedAtMs: number, endedAtMs:
   }
 
   saveCloudUsageLedger(ledger);
+}
+
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${seconds}s`;
+}
+
+function resetCloudStreamTimers(): void {
+  cloudStreamActiveStartedAt = Date.now();
+  cloudStreamActiveMs = 0;
+  cloudPausedStartedAt = 0;
+  cloudPausedMs = 0;
+}
+
+function markCloudStreamPaused(): void {
+  const now = Date.now();
+  if (cloudStreamActiveStartedAt) {
+    cloudStreamActiveMs += now - cloudStreamActiveStartedAt;
+    cloudStreamActiveStartedAt = 0;
+  }
+  if (!cloudPausedStartedAt) {
+    cloudPausedStartedAt = now;
+  }
+}
+
+function markCloudStreamResumed(): void {
+  const now = Date.now();
+  if (cloudPausedStartedAt) {
+    cloudPausedMs += now - cloudPausedStartedAt;
+    cloudPausedStartedAt = 0;
+  }
+  if (!cloudStreamActiveStartedAt) {
+    cloudStreamActiveStartedAt = now;
+  }
+}
+
+function cloudStreamTimingSnapshot(): { activeMs: number; pausedMs: number; totalMs: number } {
+  const now = Date.now();
+  const activeMs = cloudStreamActiveMs + (cloudStreamActiveStartedAt ? now - cloudStreamActiveStartedAt : 0);
+  const pausedMs = cloudPausedMs + (cloudPausedStartedAt ? now - cloudPausedStartedAt : 0);
+  const totalMs = cloudRecordingStartedAt ? now - cloudRecordingStartedAt : activeMs + pausedMs;
+  return { activeMs, pausedMs, totalMs };
 }
 
 async function runKeyboardAutomation(action: object): Promise<void> {
@@ -469,6 +560,7 @@ async function toggleRecording() {
         if (isCloudStreamingEngineActive()) {
           cloudRecordingStartedAt = Date.now();
           cloudUsageAlerted = false;
+          resetCloudStreamTimers();
           startCloudUsageAlertTimer();
         }
         console.log('[OK] Streaming transcription started');
@@ -519,7 +611,13 @@ async function toggleRecording() {
         const engineLabel = getActiveStreamingEngineLabel();
         const finalText = await activeStreamingModel.stopStreaming();
         if (isCloudStreamingEngineActive() && cloudRecordingStartedAt) {
-          recordCloudUsageSession(engineLabel, cloudRecordingStartedAt, Date.now());
+          const stoppedAt = Date.now();
+          const timing = cloudStreamTimingSnapshot();
+          recordCloudUsageSession(engineLabel, cloudRecordingStartedAt, stoppedAt);
+          console.log(
+            `[USAGE] ${engineLabel}: provider-connected ${formatDuration(timing.activeMs)}, `
+            + `paused/listening ${formatDuration(timing.pausedMs)}, total recording ${formatDuration(timing.totalMs)}`
+          );
           stopCloudUsageAlertTimer();
           cloudRecordingStartedAt = 0;
           cloudUsageAlerted = false;
@@ -545,7 +643,13 @@ async function toggleRecording() {
       } catch (error) {
         console.error('[ERROR] Streaming stop error:', error);
         if (isCloudStreamingEngineActive() && cloudRecordingStartedAt) {
-          recordCloudUsageSession(getActiveStreamingEngineLabel(), cloudRecordingStartedAt, Date.now());
+          const stoppedAt = Date.now();
+          const timing = cloudStreamTimingSnapshot();
+          recordCloudUsageSession(getActiveStreamingEngineLabel(), cloudRecordingStartedAt, stoppedAt);
+          console.log(
+            `[USAGE] ${getActiveStreamingEngineLabel()}: provider-connected ${formatDuration(timing.activeMs)}, `
+            + `paused/listening ${formatDuration(timing.pausedMs)}, total recording ${formatDuration(timing.totalMs)}`
+          );
           stopCloudUsageAlertTimer();
           cloudRecordingStartedAt = 0;
           cloudUsageAlerted = false;
@@ -738,9 +842,12 @@ app.whenReady().then(async () => {
   }
 
   const settings = settingsManager.get();
-  const transcriptionEngine = process.env.OPENWHISPER_TRANSCRIPTION_ENGINE
+  const configuredTranscriptionEngine = process.env.OPENWHISPER_TRANSCRIPTION_ENGINE
     || settings.transcriptionEngine
     || 'auto';
+  const transcriptionEngine = configuredTranscriptionEngine === 'auto'
+    ? 'nemotron-streaming'
+    : configuredTranscriptionEngine;
   const shouldUseCartesiaInk2 = transcriptionEngine === 'cartesia-ink2';
   const shouldUseElevenLabsV2 = transcriptionEngine === 'elevenlabs-v2';
   const shouldUseNemotronStreaming = transcriptionEngine === 'nemotron-streaming';
@@ -774,8 +881,16 @@ app.whenReady().then(async () => {
 
         cartesiaInk2StreamingModel.on('auto-stop', (event: { reason: string; silenceMs: number }) => {
           if (!isRecording) return;
-          console.log(`[INFO] Auto-stopping Cartesia recording after ${event.silenceMs}ms of ${event.reason}`);
-          void toggleRecording();
+          markCloudStreamPaused();
+          console.log(`[INFO] Paused Cartesia cloud stream after ${event.silenceMs}ms of ${event.reason}; local VAD is still listening`);
+          liveTypedText = cartesiaInk2StreamingModel?.getFullText() || liveTypedText;
+        });
+
+        cartesiaInk2StreamingModel.on('auto-resume', () => {
+          if (!isRecording) return;
+          markCloudStreamResumed();
+          console.log('[INFO] Resumed Cartesia cloud stream after speech was detected');
+          liveTypedText = cartesiaInk2StreamingModel?.getFullText() || liveTypedText;
         });
       } else {
         console.log('[INFO] Cartesia Ink 2 not available; set CARTESIA_API_KEY to enable it');
@@ -811,8 +926,16 @@ app.whenReady().then(async () => {
 
         elevenLabsV2StreamingModel.on('auto-stop', (event: { reason: string; silenceMs: number }) => {
           if (!isRecording) return;
-          console.log(`[INFO] Auto-stopping ElevenLabs recording after ${event.silenceMs}ms of ${event.reason}`);
-          void toggleRecording();
+          markCloudStreamPaused();
+          console.log(`[INFO] Paused ElevenLabs cloud stream after ${event.silenceMs}ms of ${event.reason}; local VAD is still listening`);
+          liveTypedText = elevenLabsV2StreamingModel?.getFullText() || liveTypedText;
+        });
+
+        elevenLabsV2StreamingModel.on('auto-resume', () => {
+          if (!isRecording) return;
+          markCloudStreamResumed();
+          console.log('[INFO] Resumed ElevenLabs cloud stream after speech was detected');
+          liveTypedText = elevenLabsV2StreamingModel?.getFullText() || liveTypedText;
         });
       } else {
         console.log('[INFO] ElevenLabs v2 not available; set ELEVENLABS_API_KEY to enable it');
@@ -952,7 +1075,13 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   if (isCloudStreamingEngineActive() && cloudRecordingStartedAt) {
-    recordCloudUsageSession(getActiveStreamingEngineLabel(), cloudRecordingStartedAt, Date.now());
+    const stoppedAt = Date.now();
+    const timing = cloudStreamTimingSnapshot();
+    recordCloudUsageSession(getActiveStreamingEngineLabel(), cloudRecordingStartedAt, stoppedAt);
+    console.log(
+      `[USAGE] ${getActiveStreamingEngineLabel()}: provider-connected ${formatDuration(timing.activeMs)}, `
+      + `paused/listening ${formatDuration(timing.pausedMs)}, total recording ${formatDuration(timing.totalMs)}`
+    );
     cloudRecordingStartedAt = 0;
   }
   stopCloudUsageAlertTimer();

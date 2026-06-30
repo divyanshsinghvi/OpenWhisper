@@ -4,7 +4,7 @@
   "description": "System-wide voice-to-text overlay app",
   "main": "dist/main.js",
   "scripts": {
-    "start": "OPENWHISPER_TRANSCRIPTION_ENGINE=${OPENWHISPER_TRANSCRIPTION_ENGINE:-nemotron-streaming} electron .",
+    "start": "electron .",
     "dev": "concurrently \"npm run build:watch\" \"wait-on dist/main.js && electron .\"",
     "build": "tsc",
     "build:watch": "tsc --watch",

@@ -63,7 +63,9 @@ over stdio as you speak and typed into whatever app has focus.
 | `moonshine` | Moonshine v2 | ~150 ms | Multilingual fallback. |
 | `parakeet-streaming` | Parakeet TDT v3 | bursty | Not natively streaming; left for batch use. |
 
-Switch engines via `OPENWHISPER_TRANSCRIPTION_ENGINE` or in Settings.
+Switch engines via `OPENWHISPER_TRANSCRIPTION_ENGINE` or in Settings. Local
+development also loads `.env` automatically; shell environment variables take
+precedence over `.env`.
 
 ElevenLabs Scribe v2 realtime:
 
@@ -77,19 +79,24 @@ Cartesia Ink 2 realtime:
 CARTESIA_API_KEY=... OPENWHISPER_TRANSCRIPTION_ENGINE=cartesia-ink2 npm start
 ```
 
-Cloud engines auto-stop after 3 seconds of local silence to avoid accidental
-long-running billable sessions. Listen uses local WebRTC VAD first and falls
-back to RMS volume detection if the native VAD module is unavailable. Tune or
-disable it with:
+Cloud engines pause their provider WebSocket after 3 seconds of local silence to
+avoid accidental long-running billable sessions. Local VAD keeps listening and
+automatically reconnects the cloud stream when you speak again. Listen uses
+local WebRTC VAD first and falls back to RMS volume detection if the native VAD
+module is unavailable. Tune or disable it with:
 
 ```bash
 OPENWHISPER_AUTO_STOP_SILENCE_MS=3000
+OPENWHISPER_VAD_MODE=webrtc
 OPENWHISPER_WEBRTC_VAD_AGGRESSIVENESS=2
+OPENWHISPER_WEBRTC_VAD_MIN_SPEECH_RATIO=0.5
 OPENWHISPER_VAD_RMS_THRESHOLD=500
+OPENWHISPER_VAD_DEBUG=1
 ```
 
-Set `OPENWHISPER_AUTO_STOP_SILENCE_MS=0` to disable auto-stop, or
-`OPENWHISPER_VAD_MODE=rms` to force the fallback RMS detector.
+Set `OPENWHISPER_AUTO_STOP_SILENCE_MS=0` to disable cloud pausing, or
+`OPENWHISPER_VAD_MODE=rms` to force the fallback RMS detector. Use
+`OPENWHISPER_VAD_DEBUG=1` to print once-per-second speech/silence diagnostics.
 
 Listen also keeps a local estimate of cumulative cloud STT audio duration and
 raises a desktop notification after 5 minutes by default:
