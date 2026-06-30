@@ -77,13 +77,13 @@ Cartesia Ink 2 realtime:
 CARTESIA_API_KEY=... OPENWHISPER_TRANSCRIPTION_ENGINE=cartesia-ink2 npm start
 ```
 
-Cloud engines auto-stop after 15 seconds of local silence to avoid accidental
+Cloud engines auto-stop after 3 seconds of local silence to avoid accidental
 long-running billable sessions. Listen uses local WebRTC VAD first and falls
 back to RMS volume detection if the native VAD module is unavailable. Tune or
 disable it with:
 
 ```bash
-OPENWHISPER_AUTO_STOP_SILENCE_MS=15000
+OPENWHISPER_AUTO_STOP_SILENCE_MS=3000
 OPENWHISPER_WEBRTC_VAD_AGGRESSIVENESS=2
 OPENWHISPER_VAD_RMS_THRESHOLD=500
 ```
