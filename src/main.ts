@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, clipboard, screen, systemPreferences } from 'electron';
+import { app, BrowserWindow, globalShortcut, ipcMain, clipboard, screen, systemPreferences, Notification } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { execFile } from 'child_process';
@@ -7,6 +7,8 @@ import { RecordingManager } from './recording';
 import { ModularTranscriptionService } from './transcription-router';
 import { MoonshineStreamingModel, StreamingEvent } from './models/MoonshineStreamingModel';
 import { NemotronStreamingModel, NemotronStreamingEvent } from './models/NemotronStreamingModel';
+import { ElevenLabsV2StreamingModel, ElevenLabsV2StreamingEvent } from './models/ElevenLabsV2StreamingModel';
+import { CartesiaInk2StreamingModel, CartesiaInk2StreamingEvent } from './models/CartesiaInk2StreamingModel';
 import { SettingsManager } from './settings';
 import { TrayManager } from './tray';
 import { extractTrailingAction } from './voice-actions';
@@ -28,6 +30,8 @@ let recordingManager: RecordingManager | null = null;
 let transcriptionService: ModularTranscriptionService | null = null;
 let streamingModel: MoonshineStreamingModel | null = null;
 let nemotronStreamingModel: NemotronStreamingModel | null = null;
+let elevenLabsV2StreamingModel: ElevenLabsV2StreamingModel | null = null;
+let cartesiaInk2StreamingModel: CartesiaInk2StreamingModel | null = null;
 let useStreaming = false;
 let isRecording = false;
 let isTranscriptionReady = false;
@@ -38,10 +42,140 @@ let saveButtonPositionTimer: NodeJS.Timeout | null = null;
 let liveTypedText = '';
 let liveTypeQueue: Promise<void> = Promise.resolve();
 let isInstallingPythonRuntime = false;
+let cloudRecordingStartedAt = 0;
+let cloudUsageAlerted = false;
+let cloudUsageAlertTimer: NodeJS.Timeout | null = null;
 const settingsManager = new SettingsManager();
 
-function getActiveStreamingModel(): MoonshineStreamingModel | NemotronStreamingModel | null {
-  return nemotronStreamingModel || streamingModel;
+const cloudUsageFile = path.join(app.getPath('userData'), 'cloud-usage.json');
+const DEFAULT_CLOUD_USAGE_ALERT_MS = 5 * 60 * 1000;
+
+interface CloudUsageLedger {
+  totalMs: number;
+  alertedAtMs: number;
+  sessions: Array<{
+    engine: string;
+    startedAt: string;
+    durationMs: number;
+  }>;
+}
+
+function getActiveStreamingModel(): MoonshineStreamingModel | NemotronStreamingModel | ElevenLabsV2StreamingModel | CartesiaInk2StreamingModel | null {
+  return cartesiaInk2StreamingModel || elevenLabsV2StreamingModel || nemotronStreamingModel || streamingModel;
+}
+
+function getActiveStreamingEngineLabel(): string {
+  if (cartesiaInk2StreamingModel) return 'Cartesia Ink 2 realtime';
+  if (elevenLabsV2StreamingModel) return 'ElevenLabs Scribe v2 realtime';
+  if (nemotronStreamingModel) return 'Nemotron streaming';
+  return 'Moonshine v2 streaming';
+}
+
+function isCloudStreamingEngineActive(): boolean {
+  return Boolean(cartesiaInk2StreamingModel || elevenLabsV2StreamingModel);
+}
+
+function cloudUsageAlertMs(): number {
+  return Number(process.env.OPENWHISPER_CLOUD_USAGE_ALERT_MS || DEFAULT_CLOUD_USAGE_ALERT_MS);
+}
+
+function loadCloudUsageLedger(): CloudUsageLedger {
+  try {
+    if (fs.existsSync(cloudUsageFile)) {
+      const ledger = JSON.parse(fs.readFileSync(cloudUsageFile, 'utf-8'));
+      return {
+        totalMs: Number(ledger.totalMs || 0),
+        alertedAtMs: Number(ledger.alertedAtMs || 0),
+        sessions: Array.isArray(ledger.sessions) ? ledger.sessions : [],
+      };
+    }
+  } catch (error) {
+    console.log(`[WARN] Could not load cloud usage ledger: ${error}`);
+  }
+
+  return { totalMs: 0, alertedAtMs: 0, sessions: [] };
+}
+
+function saveCloudUsageLedger(ledger: CloudUsageLedger): void {
+  try {
+    const dir = path.dirname(cloudUsageFile);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(cloudUsageFile, JSON.stringify(ledger, null, 2), 'utf-8');
+  } catch (error) {
+    console.log(`[WARN] Could not save cloud usage ledger: ${error}`);
+  }
+}
+
+function notifyCloudUsageThreshold(totalMs: number, thresholdMs: number): void {
+  const totalMinutes = (totalMs / 60000).toFixed(1);
+  const thresholdMinutes = Math.round(thresholdMs / 60000);
+  const body = `Estimated cloud STT usage reached ${totalMinutes} minutes. Threshold: ${thresholdMinutes} minutes.`;
+
+  console.log(`[ALERT] ${body}`);
+  if (Notification.isSupported()) {
+    new Notification({
+      title: 'Cloud STT usage alert',
+      body,
+    }).show();
+  }
+}
+
+function markCloudUsageAlerted(estimatedTotalMs: number): void {
+  const ledger = loadCloudUsageLedger();
+  ledger.alertedAtMs = estimatedTotalMs;
+  saveCloudUsageLedger(ledger);
+  cloudUsageAlerted = true;
+}
+
+function startCloudUsageAlertTimer(): void {
+  const thresholdMs = cloudUsageAlertMs();
+  if (thresholdMs <= 0 || !cloudRecordingStartedAt) return;
+
+  const ledger = loadCloudUsageLedger();
+  cloudUsageAlerted = ledger.alertedAtMs >= thresholdMs;
+  if (cloudUsageAlerted) return;
+
+  if (cloudUsageAlertTimer) clearInterval(cloudUsageAlertTimer);
+  cloudUsageAlertTimer = setInterval(() => {
+    if (!cloudRecordingStartedAt || cloudUsageAlerted) return;
+
+    const latestLedger = loadCloudUsageLedger();
+    const estimatedTotalMs = latestLedger.totalMs + (Date.now() - cloudRecordingStartedAt);
+    if (estimatedTotalMs >= thresholdMs) {
+      notifyCloudUsageThreshold(estimatedTotalMs, thresholdMs);
+      markCloudUsageAlerted(estimatedTotalMs);
+    }
+  }, 5000);
+}
+
+function stopCloudUsageAlertTimer(): void {
+  if (cloudUsageAlertTimer) {
+    clearInterval(cloudUsageAlertTimer);
+    cloudUsageAlertTimer = null;
+  }
+}
+
+function recordCloudUsageSession(engine: string, startedAtMs: number, endedAtMs: number): void {
+  if (!startedAtMs || endedAtMs <= startedAtMs) return;
+
+  const durationMs = endedAtMs - startedAtMs;
+  const ledger = loadCloudUsageLedger();
+  ledger.totalMs += durationMs;
+  ledger.sessions.push({
+    engine,
+    startedAt: new Date(startedAtMs).toISOString(),
+    durationMs,
+  });
+  ledger.sessions = ledger.sessions.slice(-500);
+
+  const thresholdMs = cloudUsageAlertMs();
+  if (thresholdMs > 0 && ledger.totalMs >= thresholdMs && ledger.alertedAtMs < thresholdMs) {
+    ledger.alertedAtMs = ledger.totalMs;
+    cloudUsageAlerted = true;
+    notifyCloudUsageThreshold(ledger.totalMs, thresholdMs);
+  }
+
+  saveCloudUsageLedger(ledger);
 }
 
 async function runKeyboardAutomation(action: object): Promise<void> {
@@ -332,9 +466,17 @@ async function toggleRecording() {
       // training-audio sox capture races the mic and breaks transcription.
       try {
         await activeStreamingModel.startStreaming();
+        if (isCloudStreamingEngineActive()) {
+          cloudRecordingStartedAt = Date.now();
+          cloudUsageAlerted = false;
+          startCloudUsageAlertTimer();
+        }
         console.log('[OK] Streaming transcription started');
       } catch (error) {
         console.error('[ERROR] Streaming start error:', error);
+        stopCloudUsageAlertTimer();
+        cloudRecordingStartedAt = 0;
+        cloudUsageAlerted = false;
         try {
           await activeStreamingModel.stopStreaming();
         } catch {
@@ -374,10 +516,16 @@ async function toggleRecording() {
     if (useStreaming && activeStreamingModel) {
       // Streaming mode: stop and get final text
       try {
+        const engineLabel = getActiveStreamingEngineLabel();
         const finalText = await activeStreamingModel.stopStreaming();
+        if (isCloudStreamingEngineActive() && cloudRecordingStartedAt) {
+          recordCloudUsageSession(engineLabel, cloudRecordingStartedAt, Date.now());
+          stopCloudUsageAlertTimer();
+          cloudRecordingStartedAt = 0;
+          cloudUsageAlerted = false;
+        }
         await liveTypeQueue;
 
-        const engineLabel = nemotronStreamingModel ? 'Nemotron streaming' : 'Moonshine v2 streaming';
         console.log(`[RESULTS] STREAMING TRANSCRIPTION RESULTS:`);
         console.log(`  [OK] Text: "${finalText}"`);
         console.log(`  [OK] Model: ${engineLabel}`);
@@ -396,6 +544,12 @@ async function toggleRecording() {
         console.log(`[DONE] PIPELINE COMPLETE - Total time: ${Date.now() - pipelineStart}ms`);
       } catch (error) {
         console.error('[ERROR] Streaming stop error:', error);
+        if (isCloudStreamingEngineActive() && cloudRecordingStartedAt) {
+          recordCloudUsageSession(getActiveStreamingEngineLabel(), cloudRecordingStartedAt, Date.now());
+          stopCloudUsageAlertTimer();
+          cloudRecordingStartedAt = 0;
+          cloudUsageAlerted = false;
+        }
         mainWindow.webContents.send('recording-state', {
           state: 'error',
           error: error instanceof Error ? error.message : 'Streaming failed'
@@ -587,11 +741,86 @@ app.whenReady().then(async () => {
   const transcriptionEngine = process.env.OPENWHISPER_TRANSCRIPTION_ENGINE
     || settings.transcriptionEngine
     || 'auto';
+  const shouldUseCartesiaInk2 = transcriptionEngine === 'cartesia-ink2';
+  const shouldUseElevenLabsV2 = transcriptionEngine === 'elevenlabs-v2';
   const shouldUseNemotronStreaming = transcriptionEngine === 'nemotron-streaming';
-  const shouldUseMoonshineStreaming = !shouldUseNemotronStreaming;
+  const shouldUseMoonshineStreaming = !shouldUseCartesiaInk2 && !shouldUseElevenLabsV2 && !shouldUseNemotronStreaming;
 
-  // Nemotron is the recommended streaming engine; Moonshine is the fallback.
-  if (shouldUseNemotronStreaming) {
+  if (shouldUseCartesiaInk2) {
+    console.log('[INIT] Checking for Cartesia Ink 2 realtime...');
+    cartesiaInk2StreamingModel = new CartesiaInk2StreamingModel();
+
+    try {
+      const streamingAvailable = await cartesiaInk2StreamingModel.isAvailable();
+      if (streamingAvailable) {
+        await cartesiaInk2StreamingModel.initialize();
+        useStreaming = true;
+        isTranscriptionReady = true;
+        updateFloatingButtonState('idle');
+        console.log('[OK] Cartesia Ink 2 realtime ready');
+
+        cartesiaInk2StreamingModel.on('transcription', (event: CartesiaInk2StreamingEvent) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('streaming-text', {
+              type: event.type,
+              text: event.text,
+            });
+          }
+
+          if (isRecording && (event.type === 'partial' || event.type === 'final')) {
+            queueLiveTextChange(cartesiaInk2StreamingModel?.getFullText() || event.text);
+          }
+        });
+
+        cartesiaInk2StreamingModel.on('auto-stop', (event: { reason: string; silenceMs: number }) => {
+          if (!isRecording) return;
+          console.log(`[INFO] Auto-stopping Cartesia recording after ${event.silenceMs}ms of ${event.reason}`);
+          void toggleRecording();
+        });
+      } else {
+        console.log('[INFO] Cartesia Ink 2 not available; set CARTESIA_API_KEY to enable it');
+      }
+    } catch (error) {
+      console.log('[INFO] Cartesia Ink 2 streaming init failed, using batch mode:', error);
+    }
+  } else if (shouldUseElevenLabsV2) {
+    console.log('[INIT] Checking for ElevenLabs Scribe v2 realtime...');
+    elevenLabsV2StreamingModel = new ElevenLabsV2StreamingModel();
+
+    try {
+      const streamingAvailable = await elevenLabsV2StreamingModel.isAvailable();
+      if (streamingAvailable) {
+        await elevenLabsV2StreamingModel.initialize();
+        useStreaming = true;
+        isTranscriptionReady = true;
+        updateFloatingButtonState('idle');
+        console.log('[OK] ElevenLabs Scribe v2 realtime ready');
+
+        elevenLabsV2StreamingModel.on('transcription', (event: ElevenLabsV2StreamingEvent) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('streaming-text', {
+              type: event.type,
+              text: event.text,
+            });
+          }
+
+          if (isRecording && (event.type === 'partial' || event.type === 'final')) {
+            queueLiveTextChange(elevenLabsV2StreamingModel?.getFullText() || event.text);
+          }
+        });
+
+        elevenLabsV2StreamingModel.on('auto-stop', (event: { reason: string; silenceMs: number }) => {
+          if (!isRecording) return;
+          console.log(`[INFO] Auto-stopping ElevenLabs recording after ${event.silenceMs}ms of ${event.reason}`);
+          void toggleRecording();
+        });
+      } else {
+        console.log('[INFO] ElevenLabs v2 not available; set ELEVENLABS_API_KEY to enable it');
+      }
+    } catch (error) {
+      console.log('[INFO] ElevenLabs v2 streaming init failed, using batch mode:', error);
+    }
+  } else if (shouldUseNemotronStreaming) {
     console.log('[INIT] Checking for Nemotron streaming...');
     nemotronStreamingModel = new NemotronStreamingModel();
 
@@ -722,7 +951,14 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+  if (isCloudStreamingEngineActive() && cloudRecordingStartedAt) {
+    recordCloudUsageSession(getActiveStreamingEngineLabel(), cloudRecordingStartedAt, Date.now());
+    cloudRecordingStartedAt = 0;
+  }
+  stopCloudUsageAlertTimer();
   globalShortcut.unregisterAll();
+  cartesiaInk2StreamingModel?.cleanup();
+  elevenLabsV2StreamingModel?.cleanup();
   streamingModel?.cleanup();
   nemotronStreamingModel?.cleanup();
   trayManager?.destroy();

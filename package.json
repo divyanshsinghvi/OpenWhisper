@@ -4,10 +4,11 @@
   "description": "System-wide voice-to-text overlay app",
   "main": "dist/main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "OPENWHISPER_TRANSCRIPTION_ENGINE=${OPENWHISPER_TRANSCRIPTION_ENGINE:-nemotron-streaming} electron .",
     "dev": "concurrently \"npm run build:watch\" \"wait-on dist/main.js && electron .\"",
     "build": "tsc",
     "build:watch": "tsc --watch",
+    "rebuild:native": "electron-builder install-app-deps",
     "package": "electron-builder"
   },
   "keywords": [
@@ -21,6 +22,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.19.25",
+    "@types/ws": "^8.18.1",
     "concurrently": "^8.2.2",
     "electron": "^28.0.0",
     "electron-builder": "^24.9.1",
@@ -29,7 +31,9 @@
   },
   "dependencies": {
     "electron-localshortcut": "^3.2.1",
-    "node-record-lpcm16": "^1.0.1"
+    "node-record-lpcm16": "^1.0.1",
+    "webrtcvad": "^1.0.1",
+    "ws": "^8.21.0"
   },
   "build": {
     "appId": "com.openwhisper.app",

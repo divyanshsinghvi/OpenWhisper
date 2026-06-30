@@ -30,7 +30,7 @@ export interface ListenSettings {
 
   // Model
   preferredModel: string | 'auto';
-  transcriptionEngine: 'moonshine-streaming' | 'nemotron-streaming' | 'auto';
+  transcriptionEngine: 'moonshine-streaming' | 'nemotron-streaming' | 'elevenlabs-v2' | 'cartesia-ink2' | 'auto';
   modelPriority: 'speed' | 'accuracy' | 'balance';
   enableStreaming: boolean;
 

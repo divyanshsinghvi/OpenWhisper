@@ -58,10 +58,61 @@ over stdio as you speak and typed into whatever app has focus.
 | Engine | Model | Latency | Notes |
 |---|---|---|---|
 | `nemotron-streaming` *(recommended)* | NVIDIA Nemotron Speech Streaming En 0.6B (ONNX, int8) | ~100 ms | True streaming. Auto-downloaded. |
+| `elevenlabs-v2` | ElevenLabs Scribe v2 realtime | network-dependent | Cloud transcription. Requires `ELEVENLABS_API_KEY`. |
+| `cartesia-ink2` | Cartesia Ink 2 realtime | network-dependent | Cloud transcription. Requires `CARTESIA_API_KEY`. |
 | `moonshine` | Moonshine v2 | ~150 ms | Multilingual fallback. |
 | `parakeet-streaming` | Parakeet TDT v3 | bursty | Not natively streaming; left for batch use. |
 
 Switch engines via `OPENWHISPER_TRANSCRIPTION_ENGINE` or in Settings.
+
+ElevenLabs Scribe v2 realtime:
+
+```bash
+ELEVENLABS_API_KEY=... OPENWHISPER_TRANSCRIPTION_ENGINE=elevenlabs-v2 npm start
+```
+
+Cartesia Ink 2 realtime:
+
+```bash
+CARTESIA_API_KEY=... OPENWHISPER_TRANSCRIPTION_ENGINE=cartesia-ink2 npm start
+```
+
+Cloud engines auto-stop after 15 seconds of local silence to avoid accidental
+long-running billable sessions. Listen uses local WebRTC VAD first and falls
+back to RMS volume detection if the native VAD module is unavailable. Tune or
+disable it with:
+
+```bash
+OPENWHISPER_AUTO_STOP_SILENCE_MS=15000
+OPENWHISPER_WEBRTC_VAD_AGGRESSIVENESS=2
+OPENWHISPER_VAD_RMS_THRESHOLD=500
+```
+
+Set `OPENWHISPER_AUTO_STOP_SILENCE_MS=0` to disable auto-stop, or
+`OPENWHISPER_VAD_MODE=rms` to force the fallback RMS detector.
+
+Listen also keeps a local estimate of cumulative cloud STT audio duration and
+raises a desktop notification after 5 minutes by default:
+
+```bash
+OPENWHISPER_CLOUD_USAGE_ALERT_MS=300000
+```
+
+Set `OPENWHISPER_CLOUD_USAGE_ALERT_MS=0` to disable usage alerts. The ledger is
+stored locally in the app data directory and is an estimate based on recording
+duration, not a provider invoice readout.
+
+Cloud STT pricing snapshot:
+
+| Provider | Model | Listed unit | Approx included STT |
+|---|---|---:|---:|
+| ElevenLabs | Scribe v2 | 330 credits/min | Free: ~30 min/month; Starter $6: ~1.5 h/month |
+| Cartesia | Ink 2 | plan-included STT hours | Free: ~1 h 51 min/month; Pro $5: ~9 h 16 min/month |
+
+Cartesia is substantially cheaper for STT on listed plan-included usage. Check
+the vendor pricing pages before relying on these numbers for production:
+[ElevenLabs pricing](https://elevenlabs.io/pricing) and
+[Cartesia pricing](https://www.cartesia.ai/pricing).
 
 ## Adding media
 
